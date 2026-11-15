@@ -25,8 +25,8 @@ from PIL import Image, ImageDraw, ImageFont
 
 app = FastAPI(title="Anshuka EtherBroadcast Cloud Runner", version="1.0.0")
 
-WIDTH_LANDSCAPE = 1920
-HEIGHT_LANDSCAPE = 1080
+WIDTH_LANDSCAPE = 1280
+HEIGHT_LANDSCAPE = 720
 
 BG_TOP = (10, 14, 23)
 CARD_BG = (17, 24, 39)
@@ -81,65 +81,70 @@ def create_graphic_frame(title, subtitle, dialogue, out_png):
     draw = ImageDraw.Draw(im)
 
     # Top Header Bar
-    draw.rectangle([0, 0, WIDTH_LANDSCAPE, 80], fill=(15, 23, 42))
-    draw.line([0, 80, WIDTH_LANDSCAPE, 80], fill=CARD_BORDER, width=2)
+    draw.rectangle([0, 0, WIDTH_LANDSCAPE, 56], fill=(15, 23, 42))
+    draw.line([0, 56, WIDTH_LANDSCAPE, 56], fill=CARD_BORDER, width=2)
 
-    font_brand = get_font(26, bold=True)
-    font_sub_brand = get_font(18, bold=True)
-    draw.text((60, 24), "ईथर-प्रसारण", font=font_brand, fill=ACCENT_GOLD)
-    draw.text((235, 28), "|   ETHER-BROADCAST  •  SOVEREIGN CLOUD STREAM", font=font_sub_brand, fill=ACCENT_CYAN)
+    font_brand = get_font(20, bold=True)
+    font_sub_brand = get_font(13, bold=True)
+    draw.text((40, 16), "ईथर-प्रसारण", font=font_brand, fill=ACCENT_GOLD)
+    draw.text((170, 19), "|   ETHER-BROADCAST  •  SOVEREIGN CLOUD STREAM", font=font_sub_brand, fill=ACCENT_CYAN)
 
     # Live Badge
-    draw.rectangle([WIDTH_LANDSCAPE - 340, 18, WIDTH_LANDSCAPE - 40, 62], fill=(24, 32, 47), outline=CARD_BORDER)
-    draw.ellipse([WIDTH_LANDSCAPE - 325, 34, WIDTH_LANDSCAPE - 313, 46], fill=(239, 68, 68))
-    draw.text((WIDTH_LANDSCAPE - 300, 26), "ON-AIR  |  ATS PLATFORM", font=get_font(16, bold=True), fill=TEXT_WHITE)
+    draw.rectangle([WIDTH_LANDSCAPE - 270, 12, WIDTH_LANDSCAPE - 30, 44], fill=(24, 32, 47), outline=CARD_BORDER)
+    draw.ellipse([WIDTH_LANDSCAPE - 258, 24, WIDTH_LANDSCAPE - 248, 34], fill=(239, 68, 68))
+    draw.text((WIDTH_LANDSCAPE - 238, 18), "ON-AIR  |  ATS PLATFORM", font=get_font(12, bold=True), fill=TEXT_WHITE)
 
     # Hero Content Card
-    card_x1, card_y1, card_x2, card_y2 = 120, 120, WIDTH_LANDSCAPE - 120, 720
+    card_x1, card_y1, card_x2, card_y2 = 80, 80, WIDTH_LANDSCAPE - 80, 480
     draw.rectangle([card_x1, card_y1, card_x2, card_y2], fill=CARD_BG, outline=CARD_BORDER, width=2)
     draw.line([card_x1, card_y1, card_x2, card_y1], fill=ACCENT_CYAN, width=3)
 
     # Category Pill
-    draw.rectangle([card_x1 + 40, card_y1 + 35, card_x1 + 420, card_y1 + 71], fill=(30, 41, 59), outline=ACCENT_EMERALD)
-    draw.text((card_x1 + 55, card_y1 + 40), "★ सच्चाई की वेल्थ  |  सॉवरेन इंटेलिजेंस", font=get_font(16, bold=True), fill=ACCENT_EMERALD)
+    draw.rectangle([card_x1 + 30, card_y1 + 25, card_x1 + 340, card_y1 + 55], fill=(30, 41, 59), outline=ACCENT_EMERALD)
+    draw.text((card_x1 + 42, card_y1 + 30), "★ सच्चाई की वेल्थ  |  सॉवरेन इंटेलिजेंस", font=get_font(13, bold=True), fill=ACCENT_EMERALD)
 
     # Title
-    font_title = get_font(44, bold=True)
-    title_lines = wrap_text(title, font_title, card_x2 - card_x1 - 80, draw)
-    ty = card_y1 + 95
+    font_title = get_font(30, bold=True)
+    title_lines = wrap_text(title, font_title, card_x2 - card_x1 - 60, draw)
+    ty = card_y1 + 75
     for t_line in title_lines[:2]:
-        draw.text((card_x1 + 40, ty), t_line, font=font_title, fill=TEXT_WHITE)
-        ty += 58
+        draw.text((card_x1 + 30, ty), t_line, font=font_title, fill=TEXT_WHITE)
+        ty += 40
 
     # Subtitle
     if subtitle:
-        draw.text((card_x1 + 40, ty + 10), subtitle, font=get_font(24), fill=ACCENT_CYAN)
-        ty += 45
+        draw.text((card_x1 + 30, ty + 6), subtitle, font=get_font(17), fill=ACCENT_CYAN)
+        ty += 32
 
     # Core Dialogue
-    draw.line([card_x1 + 40, ty + 15, card_x2 - 40, ty + 15], fill=CARD_BORDER, width=1)
-    ty += 35
-    font_dialogue = get_font(22)
-    dialogue_lines = wrap_text(f'"{dialogue}"', font_dialogue, card_x2 - card_x1 - 100, draw)
-    for d_line in dialogue_lines[:4]:
-        draw.text((card_x1 + 50, ty), d_line, font=font_dialogue, fill=TEXT_MUTED)
-        ty += 34
+    draw.line([card_x1 + 30, ty + 10, card_x2 - 30, ty + 10], fill=CARD_BORDER, width=1)
+    ty += 24
+    font_dialogue = get_font(16)
+    dialogue_lines = wrap_text(f'"{dialogue}"', font_dialogue, card_x2 - card_x1 - 60, draw)
+    for d_line in dialogue_lines[:3]:
+        draw.text((card_x1 + 35, ty), d_line, font=font_dialogue, fill=TEXT_MUTED)
+        ty += 25
 
-    draw.text((card_x1 + 50, card_y2 - 45), "वक्ता: अमन कुमार (Aman Kumar) — संस्थापक, Aman Tech Solutions", font=get_font(18, bold=True), fill=ACCENT_GOLD)
+    draw.text((card_x1 + 35, card_y2 - 35), "वक्ता: अमन कुमार (Aman Kumar) — संस्थापक, Aman Tech Solutions", font=get_font(13, bold=True), fill=ACCENT_GOLD)
 
     # Waveform Container Box
-    wave_x1, wave_y1, wave_x2, wave_y2 = 120, 750, WIDTH_LANDSCAPE - 120, 980
+    wave_x1, wave_y1, wave_x2, wave_y2 = 80, 505, WIDTH_LANDSCAPE - 80, 660
     draw.rectangle([wave_x1, wave_y1, wave_x2, wave_y2], fill=(13, 19, 33), outline=CARD_BORDER, width=2)
-    draw.text((wave_x1 + 30, wave_y1 + 15), "AUDIO WAVEFORM SPECTRUM  |  GEMINI EMOTIVE ENGINE", font=get_font(13, bold=True), fill=ACCENT_CYAN)
+    draw.text((wave_x1 + 25, wave_y1 + 10), "AUDIO WAVEFORM SPECTRUM  |  GEMINI EMOTIVE ENGINE", font=get_font(11, bold=True), fill=ACCENT_CYAN)
 
     # Footer
-    draw.rectangle([0, HEIGHT_LANDSCAPE - 60, WIDTH_LANDSCAPE, HEIGHT_LANDSCAPE], fill=(15, 23, 42))
-    draw.line([0, HEIGHT_LANDSCAPE - 60, WIDTH_LANDSCAPE, HEIGHT_LANDSCAPE - 60], fill=CARD_BORDER, width=2)
-    draw.text((40, HEIGHT_LANDSCAPE - 42), "मंच: anshuka.in   •   Aman Tech Solutions (Proprietor: Aman Kumar)", font=get_font(16), fill=TEXT_MUTED)
-    draw.text((WIDTH_LANDSCAPE - 450, HEIGHT_LANDSCAPE - 42), "EtherComm Sovereign Mesh Architecture", font=get_font(15, bold=True), fill=ACCENT_GOLD)
+    draw.rectangle([0, HEIGHT_LANDSCAPE - 45, WIDTH_LANDSCAPE, HEIGHT_LANDSCAPE], fill=(15, 23, 42))
+    draw.line([0, HEIGHT_LANDSCAPE - 45, WIDTH_LANDSCAPE, HEIGHT_LANDSCAPE - 45], fill=CARD_BORDER, width=1)
+    draw.text((30, HEIGHT_LANDSCAPE - 30), "मंच: anshuka.in   •   Aman Tech Solutions (Proprietor: Aman Kumar)", font=get_font(12), fill=TEXT_MUTED)
+    draw.text((WIDTH_LANDSCAPE - 330, HEIGHT_LANDSCAPE - 30), "EtherComm Sovereign Mesh Architecture", font=get_font(11, bold=True), fill=ACCENT_GOLD)
 
     im.save(out_png)
-    return wave_x1 + 30, wave_y1 + 45, wave_x2 - wave_x1 - 60, wave_y2 - wave_y1 - 60
+    # Ensure even dimensions for ffmpeg filter
+    raw_w = wave_x2 - wave_x1 - 40
+    raw_h = wave_y2 - wave_y1 - 44
+    even_w = (raw_w // 2) * 2
+    even_h = (raw_h // 2) * 2
+    return wave_x1 + 20, wave_y1 + 32, even_w, even_h
 
 def generate_script(api_key, custom_topic):
     prompt = f"""You are the lead content architect for "ईथर-प्रसारण" (EtherBroadcast) by Aman Tech Solutions (Proprietor: Aman Kumar).
@@ -304,6 +309,7 @@ def trigger_broadcast(req: TriggerRequest):
 
     ffmpeg_cmd = [
         "ffmpeg", "-y",
+        "-threads", "1",
         "-loop", "1",
         "-i", bg_png,
         "-i", audio_path,
@@ -313,10 +319,11 @@ def trigger_broadcast(req: TriggerRequest):
         "-map", "[outv]",
         "-map", "1:a",
         "-c:v", "libx264",
+        "-threads", "1",
         "-tune", "stillimage",
-        "-preset", "veryfast",
+        "-preset", "ultrafast",
         "-c:a", "aac",
-        "-b:a", "192k",
+        "-b:a", "128k",
         "-pix_fmt", "yuv420p",
         mp4_path
     ]
