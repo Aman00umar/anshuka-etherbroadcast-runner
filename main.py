@@ -52,7 +52,7 @@ RECORDS_CACHE = []
 
 class TriggerRequest(BaseModel):
     customTopic: Optional[str] = None
-    platforms: Optional[List[str]] = ["youtube"]
+    platforms: Optional[List[str]] = ["youtube", "facebook", "instagram"]
     privacyStatus: Optional[str] = "unlisted"
     voicePersona: Optional[str] = "Puck"
 
@@ -380,8 +380,8 @@ def publish_instagram_reel(token, ig_user_id, public_video_url, caption):
     creation_id = init_res.json().get("id")
 
     # Step 2: Poll container status until FINISHED
-    for _ in range(20):
-        time.sleep(3)
+    for _ in range(12):
+        time.sleep(6)
         st_res = requests.get(
             f"https://graph.facebook.com/v21.0/{creation_id}",
             params={"access_token": token, "fields": "status_code"},
@@ -405,7 +405,14 @@ def publish_instagram_reel(token, ig_user_id, public_video_url, caption):
     )
     if pub_res.status_code in (200, 201):
         pid = pub_res.json().get("id")
-        return {"success": True, "targetId": pid, "url": f"https://www.instagram.com/reel/{pid}"}
+        permalink = f"https://www.instagram.com/reel/{pid}"
+        try:
+            p_res = requests.get(f"https://graph.facebook.com/v21.0/{pid}?fields=permalink&access_token={token}", timeout=10)
+            if p_res.status_code == 200 and p_res.json().get("permalink"):
+                permalink = p_res.json().get("permalink")
+        except:
+            pass
+        return {"success": True, "targetId": pid, "url": permalink}
     return {"success": False, "error": f"Publish failed: {pub_res.text}"}
 
 @app.get("/health")
