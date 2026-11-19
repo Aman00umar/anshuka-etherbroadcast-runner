@@ -20,13 +20,15 @@ import base64
 import wave
 import subprocess
 import requests
+import asyncio
+from datetime import datetime, timezone
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 from PIL import Image, ImageDraw, ImageFont
 
-app = FastAPI(title="Anshuka EtherBroadcast Multi-Scene Cloud Runner", version="2.0.0")
+app = FastAPI(title="Anshuka EtherBroadcast Multi-Scene Cloud Runner", version="2.5.0")
 
 WIDTH_LANDSCAPE = 1280
 HEIGHT_LANDSCAPE = 720
@@ -52,6 +54,13 @@ RECORDS_CACHE = []
 
 class TriggerRequest(BaseModel):
     customTopic: Optional[str] = None
+    storyType: Optional[str] = "dev_journey"
+    chatSummary: Optional[str] = None
+    gitCommits: Optional[List[str]] = None
+    issuesFaced: Optional[str] = None
+    resultMilestone: Optional[str] = None
+    timeTaken: Optional[str] = None
+    providedScript: Optional[Dict[str, Any]] = None
     platforms: Optional[List[str]] = ["youtube", "facebook", "instagram"]
     privacyStatus: Optional[str] = "unlisted"
     voicePersona: Optional[str] = "Puck"
@@ -113,8 +122,10 @@ def create_scene_frame(scene, scene_idx, total_scenes, title, subtitle, out_png)
 
     font_brand = get_font_hi(20, bold=True)
     font_sub_brand = get_font_en(13, bold=True)
-    draw.text((40, 16), "ईथर-प्रसारण", font=font_brand, fill=ACCENT_GOLD)
-    draw.text((170, 19), f"|   ETHER-BROADCAST  •  SCENE {scene_idx + 1}/{total_scenes}", font=font_sub_brand, fill=ACCENT_CYAN)
+    brand_text = scene.get("brand", "सृजन की दास्तान")
+    sub_brand_text = scene.get("subBrand", "BUILD IN PUBLIC")
+    draw.text((40, 16), brand_text, font=font_brand, fill=ACCENT_GOLD)
+    draw.text((220, 19), f"|   {sub_brand_text}  •  SCENE {scene_idx + 1}/{total_scenes}", font=font_sub_brand, fill=ACCENT_CYAN)
 
     # Live Badge with scene accent
     draw.rectangle([WIDTH_LANDSCAPE - 270, 12, WIDTH_LANDSCAPE - 30, 44], fill=(24, 32, 47), outline=CARD_BORDER)
@@ -169,28 +180,105 @@ def create_scene_frame(scene, scene_idx, total_scenes, title, subtitle, out_png)
     draw.rectangle([0, HEIGHT_LANDSCAPE - 45, WIDTH_LANDSCAPE, HEIGHT_LANDSCAPE], fill=(15, 23, 42))
     draw.line([0, HEIGHT_LANDSCAPE - 45, WIDTH_LANDSCAPE, HEIGHT_LANDSCAPE - 45], fill=CARD_BORDER, width=1)
     draw.text((30, HEIGHT_LANDSCAPE - 30), "मंच: anshuka.in   •   Aman Tech Solutions (Proprietor: Aman Kumar)", font=get_font_hi(12), fill=TEXT_MUTED)
-    draw.text((WIDTH_LANDSCAPE - 330, HEIGHT_LANDSCAPE - 30), "EtherComm Sovereign Mesh Architecture", font=get_font_en(11, bold=True), fill=ACCENT_GOLD)
+    footer_right = scene.get("footerTag", "Real-Time Dev Journey & Build Chronicles")
+    draw.text((WIDTH_LANDSCAPE - 360, HEIGHT_LANDSCAPE - 30), footer_right, font=get_font_en(11, bold=True), fill=ACCENT_GOLD)
 
     im.save(out_png)
     even_w = ((wave_x2 - wave_x1 - 40) // 2) * 2
     even_h = ((wave_y2 - wave_y1 - 44) // 2) * 2
     return wave_x1 + 20, wave_y1 + 32, even_w, even_h
 
-def generate_script(api_key, custom_topic):
-    prompt = f"""You are the lead content architect for "ईथर-प्रसारण" (EtherBroadcast) by Aman Tech Solutions (Proprietor: Aman Kumar).
+def generate_script(api_key, custom_topic=None, story_context=None):
+    story_context = story_context or {}
+    chat_summary = story_context.get("chatSummary")
+    git_commits = story_context.get("gitCommits")
+    issues_faced = story_context.get("issuesFaced")
+    result_milestone = story_context.get("resultMilestone")
+    time_taken = story_context.get("timeTaken")
+    story_type = story_context.get("storyType", "dev_journey")
+
+    is_dev_journey = (
+        story_type == "dev_journey" or
+        not custom_topic or
+        "सच्चाई की वेल्थ" in (custom_topic or "") or
+        "Dev" in (custom_topic or "") or
+        "कोड" in (custom_topic or "") or
+        "विकास" in (custom_topic or "")
+    )
+
+    if is_dev_journey:
+        prompt = f"""You are the lead narrative architect and authentic tech storyteller for "कोड और सृजन की जीवंत दास्तान" (The Real Build Chronicles) by Aman Tech Solutions (Proprietor: Aman Kumar, anshuka.in).
+
+Ethos & Directives:
+- REAL-WORLD DEVELOPER JOURNEY (Building in Public): Move completely away from repetitive theoretical slogans. Tell the genuine, inspiring behind-the-scenes engineering chronicle of building the ATS sovereign software platform.
+- Real discussions: Ideas discussed in IDE chats, functionalities requested, complex design decisions, lines of code written, real errors debugged, git commits pushed to GitHub, benchmarks cleared, and live edge deployment.
+- Tone: Natural, captivating, inspiring, conversational Hindi (Devanagari script) with high emotional resonance for spoken voice. Create an appealing, poetic, professional title (NOT literal like 'रियल टाइम सच्चाई').
+
+Context from Live Work & Git:
+- Target Story Focus: {custom_topic or "वास्तविक विकास गाथा — कोड और संकल्प का सफर"}
+{f"- IDE Chat & Features Requested: {chat_summary}" if chat_summary else ""}
+{f"- Git Commits & Pushes: {', '.join(git_commits[:5]) if isinstance(git_commits, list) else git_commits}" if git_commits else ""}
+{f"- Issues Faced & Debugged: {issues_faced}" if issues_faced else ""}
+{f"- Results & Milestones: {result_milestone}" if result_milestone else ""}
+{f"- Execution Time: {time_taken}" if time_taken else ""}
+
+Generate a short, powerful, conversational broadcast monologue in natural, authentic Hindi.
+Duration: 35 to 50 seconds of speech (approx. 55-80 words).
+
+Structure into 3 visual scenes:
+1. Scene 1 (The Challenge & Conception / विचार और चुनौती): What feature was conceived, what technical obstacle arose.
+2. Scene 2 (The Coding Battle & Git Pushes / समाधान और गिट कमिट्स): How we iterated, chat brainstormed, debugged, and pushed to repo.
+3. Scene 3 (The Milestone & Live Result / सफलता और परिणाम): Tests passing, live deployment running, and the thrill of real creation.
+
+Output STRICT JSON:
+{{
+  "title": "Captivating Hindi Title (e.g. 'कोड और संकल्प: जब स्क्रीन के पीछे एक विचार ने जन्म लिया')",
+  "subtitle": "अमन टेक सॉल्यूशंस • निर्माण की जीवंत दास्तान",
+  "dialogue": "Continuous spoken monologue in natural Hindi Devanagari script for emotive TTS voice",
+  "summary": "1-sentence summary of today's build story",
+  "tags": ["Aman Kumar", "BuildingInPublic", "DevDiary", "ATSPlatform", "CodeChronicles", "GitHubJourney"],
+  "socialCaption": "Short engaging post caption with hashtags for YouTube/Facebook/Instagram",
+  "scenes": [
+    {{
+      "brand": "सृजन की दास्तान",
+      "subBrand": "BUILD IN PUBLIC",
+      "tag": "भाग १: विचार और चुनौती",
+      "heading": "Catchy Scene 1 Title in Hindi (max 5-7 words)",
+      "points": ["Short punchy highlight 1", "Short punchy highlight 2"],
+      "accent": "gold"
+    }},
+    {{
+      "brand": "सृजन की दास्तान",
+      "subBrand": "CODE & COMMIT",
+      "tag": "भाग २: समाधान और गिट कमिट्स",
+      "heading": "Catchy Scene 2 Title in Hindi (max 5-7 words)",
+      "points": ["Short punchy highlight 1", "Short punchy highlight 2"],
+      "accent": "cyan"
+    }},
+    {{
+      "brand": "सृजन की दास्तान",
+      "subBrand": "LIVE RESULTS",
+      "tag": "भाग ३: सफलता और परिणाम",
+      "heading": "Catchy Scene 3 Title in Hindi (max 5-7 words)",
+      "points": ["Short punchy highlight 1", "Short punchy highlight 2"],
+      "accent": "emerald"
+    }}
+  ]
+}}"""
+    else:
+        prompt = f"""You are the lead content architect for "ईथर-प्रसारण" (EtherBroadcast) by Aman Tech Solutions (Proprietor: Aman Kumar).
 Ethos:
 - Sovereign AI Agents and Autonomous Workflow Automation (ATS Platform, anshuka.in)
 - EtherComm decentralized P2P mesh communication
-- "सच्चाई की वेल्थ" (Wealth of Truth) ethos
-{f'Target Topic: "{custom_topic}"' if custom_topic else 'Inspiring theme around autonomous computing, sovereign tech, or decentralized intelligence.'}
+Target Topic: "{custom_topic}"
 
 Generate a short, powerful, conversational broadcast monologue in natural, authentic Hindi.
-Duration: 30 to 45 seconds of speech (approx. 50-70 words).
+Duration: 35 to 45 seconds of speech (approx. 50-70 words).
 
 Structure the broadcast into 3 visual scenes:
-1. Scene 1 (The Hook & Challenge / समस्या या पृष्ठभूमि): Intriguing opening question or reality check.
-2. Scene 2 (The Sovereign Solution / सॉवरेन तकनीक व समाधान): ATS Platform, EtherComm, Sovereign AI.
-3. Scene 3 (The Sovereign Ethos & Call-to-action / सच्चाई की वेल्थ व आह्वान): anshuka.in and digital sovereignty.
+1. Scene 1 (समस्या या पृष्ठभूमि): Intriguing opening question or reality check.
+2. Scene 2 (सॉवरेन तकनीक व समाधान): ATS Platform, EtherComm, Sovereign AI.
+3. Scene 3 (संप्रभु विजन व परिणाम): anshuka.in and digital sovereignty.
 
 Output STRICT JSON:
 {{
@@ -198,23 +286,29 @@ Output STRICT JSON:
   "subtitle": "अमन टेक सॉल्यूशंस ईथर-प्रसारण",
   "dialogue": "Continuous spoken monologue in natural Hindi Devanagari script for TTS voice",
   "summary": "1-sentence summary",
-  "tags": ["Aman Kumar", "ATS Platform", "EtherComm", "Sovereign AI", "सच्चाई की वेल्थ"],
+  "tags": ["Aman Kumar", "ATS Platform", "EtherComm", "Sovereign AI"],
   "socialCaption": "Short engaging post caption with hashtags for YouTube/Facebook/Instagram",
   "scenes": [
     {{
+      "brand": "ईथर-प्रसारण",
+      "subBrand": "ETHER-BROADCAST",
       "tag": "भाग १: पृष्ठभूमि और समस्या",
       "heading": "Catchy Scene 1 Title in Hindi (max 5-7 words)",
       "points": ["Short punchy highlight 1", "Short punchy highlight 2"],
       "accent": "gold"
     }},
     {{
+      "brand": "ईथर-प्रसारण",
+      "subBrand": "SOVEREIGN TECH",
       "tag": "भाग २: सॉवरेन समाधान",
       "heading": "Catchy Scene 2 Title in Hindi (max 5-7 words)",
       "points": ["Short punchy highlight 1", "Short punchy highlight 2"],
       "accent": "cyan"
     }},
     {{
-      "tag": "भाग ३: सच्चाई की वेल्थ",
+      "brand": "ईथर-प्रसारण",
+      "subBrand": "FUTURE VISION",
+      "tag": "भाग ३: संप्रभु भविष्य",
       "heading": "Catchy Scene 3 Title in Hindi (max 5-7 words)",
       "points": ["Short punchy highlight 1", "Short punchy highlight 2"],
       "accent": "emerald"
@@ -239,21 +333,27 @@ Output STRICT JSON:
     if "scenes" not in parsed or not isinstance(parsed["scenes"], list) or len(parsed["scenes"]) == 0:
         parsed["scenes"] = [
             {
-                "tag": "भाग १: समस्या व परिप्रेक्ष्य",
-                "heading": parsed.get("title", "सॉवरेन इंटेलिजेंस का आह्वान"),
-                "points": ["केंद्रीकृत डेटा नियंत्रण की सीमाएं", "स्वायत्तता और गोपनीयता का महत्व"],
+                "brand": "सृजन की दास्तान",
+                "subBrand": "BUILD IN PUBLIC",
+                "tag": "भाग १: विचार और चुनौती",
+                "heading": parsed.get("title", "विकास का नया अध्याय"),
+                "points": ["नई आवश्यकताओं का विश्लेषण", "आर्किटेक्चरल चुनौतियों का समाधान"],
                 "accent": "gold"
             },
             {
-                "tag": "भाग २: सॉवरेन तकनीक",
-                "heading": "एटीएस प्लेटफॉर्म और ईथरकॉम",
-                "points": ["P2P मेश संचार नेटवर्क", "24/7 स्वतंत्र क्लाउड ऑटोनॉमी"],
+                "brand": "सृजन की दास्तान",
+                "subBrand": "CODE & COMMIT",
+                "tag": "भाग २: कोडिंग और समाधान",
+                "heading": "गिट कमिट्स और डीप इंजीनियरिंग",
+                "points": ["चैट संवाद से समाधान का निर्माण", "निरंतर कोड रिफैक्टरिंग और परीक्षण"],
                 "accent": "cyan"
             },
             {
-                "tag": "भाग ३: सच्चाई की वेल्थ",
-                "heading": "डिजिटल संप्रभुता — anshuka.in",
-                "points": ["सच्चाई पर आधारित स्वायत्त भविष्य", "जुड़िए आधिकारिक मंच anshuka.in से"],
+                "brand": "सृजन की दास्तान",
+                "subBrand": "LIVE RESULTS",
+                "tag": "भाग ३: सफलता और परिणाम",
+                "heading": "लाइव डिप्लॉयमेंट और परिणाम",
+                "points": ["क्लाउड व एज पर सफल एक्ज़ीक्यूशन", "anshuka.in पर लाइव प्लेटफॉर्म"],
                 "accent": "emerald"
             }
         ]
@@ -443,8 +543,7 @@ def get_status():
         "history": RECORDS_CACHE
     }
 
-@app.post("/api/etherbroadcast/trigger")
-def trigger_broadcast(req: TriggerRequest):
+def execute_broadcast_pipeline(req: TriggerRequest):
     api_key = os.environ.get("GEMINI_API_KEY")
     if not api_key:
         raise HTTPException(status_code=500, detail="GEMINI_API_KEY is not configured")
@@ -454,8 +553,39 @@ def trigger_broadcast(req: TriggerRequest):
     audio_path = os.path.join(tmp_dir, f"{broadcast_id}.wav")
     mp4_path = os.path.join(tmp_dir, f"{broadcast_id}.mp4")
 
-    # 1. Multi-Scene Script Generation
-    script = generate_script(api_key, req.customTopic)
+    # 1. Multi-Scene Script Generation or Use Pre-Generated Script
+    if req.providedScript and isinstance(req.providedScript, dict) and "dialogue" in req.providedScript:
+        script = req.providedScript
+        # Ensure scenes exist
+        if "scenes" not in script or not isinstance(script["scenes"], list):
+            script["scenes"] = [
+                {
+                    "brand": "सृजन की दास्तान",
+                    "subBrand": "BUILD IN PUBLIC",
+                    "tag": "भाग १: विचार और चुनौती",
+                    "heading": script.get("title", "विकास का नया अध्याय"),
+                    "points": ["नई आवश्यकताओं का विश्लेषण", "आर्किटेक्चरल चुनौतियों का समाधान"],
+                    "accent": "gold"
+                },
+                {
+                    "brand": "सृजन की दास्तान",
+                    "subBrand": "CODE & COMMIT",
+                    "tag": "भाग २: कोडिंग और समाधान",
+                    "heading": "गिट कमिट्स और डीप इंजीनियरिंग",
+                    "points": ["चैट संवाद से समाधान का निर्माण", "निरंतर कोड रिफैक्टरिंग और परीक्षण"],
+                    "accent": "cyan"
+                },
+                {
+                    "brand": "सृजन की दास्तान",
+                    "subBrand": "LIVE RESULTS",
+                    "tag": "भाग ३: सफलता और परिणाम",
+                    "heading": "लाइव डिप्लॉयमेंट और परिणाम",
+                    "points": ["क्लाउड व एज पर सफल एक्ज़ीक्यूशन", "anshuka.in पर लाइव प्लेटफॉर्म"],
+                    "accent": "emerald"
+                }
+            ]
+    else:
+        script = generate_script(api_key, req.customTopic, req.dict())
 
     # 2. Emotive Audio Synthesis
     audio_bytes = synthesize_audio(api_key, script["dialogue"], req.voicePersona or "Puck")
@@ -526,7 +656,7 @@ def trigger_broadcast(req: TriggerRequest):
                     yt_token,
                     mp4_path,
                     script["title"],
-                    f"{script['dialogue']}\n\n{script.get('socialCaption', '')}\n\nआधिकारिक मंच: https://anshuka.in\nअमन टेक सॉल्यूशंस (ATS Platform) | ईथर-प्रसारण",
+                    f"{script['dialogue']}\n\n{script.get('socialCaption', '')}\n\nआधिकारिक मंच: https://anshuka.in\nअमन टेक सॉल्यूशंस (ATS Platform) | निर्माण की जीवंत दास्तान",
                     script.get("tags", []),
                     req.privacyStatus or "unlisted"
                 )
@@ -555,7 +685,7 @@ def trigger_broadcast(req: TriggerRequest):
         page_id = os.environ.get("FACEBOOK_PAGE_ID", "984918738043473")
         if page_token and page_id:
             try:
-                fb_desc = f"{script['title']}\n\n{script['dialogue']}\n\n{script.get('socialCaption', '')}\n\nमंच: https://anshuka.in | अमन टेक सॉल्यूशंस (सच्चाई की वेल्थ)"
+                fb_desc = f"{script['title']}\n\n{script['dialogue']}\n\n{script.get('socialCaption', '')}\n\nमंच: https://anshuka.in | अमन टेक सॉल्यूशंस (निर्माण की जीवंत दास्तान)"
                 fb_res = publish_facebook_video(page_token, page_id, mp4_path, script["title"], fb_desc)
                 publish_results.append({
                     "platform": "facebook",
@@ -583,7 +713,7 @@ def trigger_broadcast(req: TriggerRequest):
         ig_user_id = os.environ.get("INSTAGRAM_ACCOUNT_ID", "17841446842624563")
         if page_token and ig_user_id:
             try:
-                ig_caption = f"{script['title']}\n\n{script.get('socialCaption', '')}\n\nसच्चाई की वेल्थ — अमन टेक सॉल्यूशंस • anshuka.in"
+                ig_caption = f"{script['title']}\n\n{script.get('socialCaption', '')}\n\nनिर्माण की जीवंत दास्तान — अमन टेक सॉल्यूशंस • anshuka.in"
                 ig_res = publish_instagram_reel(page_token, ig_user_id, public_video_url, ig_caption)
                 publish_results.append({
                     "platform": "instagram",
@@ -608,6 +738,7 @@ def trigger_broadcast(req: TriggerRequest):
     record = {
         "id": broadcast_id,
         "script": script,
+        "storyType": req.storyType or "dev_journey",
         "scenesCount": len(scenes),
         "videoPath": mp4_path,
         "videoPublicUrl": public_video_url,
@@ -621,6 +752,55 @@ def trigger_broadcast(req: TriggerRequest):
         RECORDS_CACHE.pop()
 
     return {"success": True, "record": record}
+
+@app.post("/api/etherbroadcast/trigger")
+def trigger_broadcast(req: TriggerRequest):
+    return execute_broadcast_pipeline(req)
+
+@app.post("/api/dev-story/trigger")
+def trigger_dev_story(req: TriggerRequest):
+    req.storyType = "dev_journey"
+    return execute_broadcast_pipeline(req)
+
+@app.get("/api/dev-story/status")
+def get_dev_story_status():
+    dev_stories = [r for r in RECORDS_CACHE if r.get("storyType") == "dev_journey"]
+    return {
+        "success": True,
+        "service": "Dev Story Real Build Chronicles Cloud Runner",
+        "totalDevStories": len(dev_stories),
+        "latest": dev_stories[0] if dev_stories else None,
+        "history": dev_stories
+    }
+
+async def autonomous_scheduler_loop():
+    last_run_date = None
+    while True:
+        try:
+            await asyncio.sleep(60)
+            auto_enabled = os.environ.get("AUTO_DEV_SCHEDULER_ENABLED", "false").lower() in ("true", "1", "yes")
+            if not auto_enabled:
+                continue
+
+            target_hour = int(os.environ.get("DEV_SCHEDULER_HOUR_UTC", "13")) # 13:00 UTC = 18:30 IST
+            now_utc = datetime.now(timezone.utc)
+            today_str = now_utc.strftime("%Y-%m-%d")
+
+            if now_utc.hour == target_hour and last_run_date != today_str:
+                last_run_date = today_str
+                print(f"[Autonomous Dev Scheduler] Executing daily Dev Story broadcast for {today_str}...")
+                req = TriggerRequest(
+                    customTopic="दैनिक निर्माण और विकास की जीवंत दास्तान (Daily Build Chronicles)",
+                    storyType="dev_journey",
+                    platforms=["youtube", "facebook", "instagram"]
+                )
+                execute_broadcast_pipeline(req)
+        except Exception as e:
+            print(f"[Autonomous Dev Scheduler Error]: {e}")
+
+@app.on_event("startup")
+async def startup_event():
+    asyncio.create_task(autonomous_scheduler_loop())
 
 if __name__ == "__main__":
     import uvicorn
