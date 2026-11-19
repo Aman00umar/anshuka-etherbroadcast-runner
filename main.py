@@ -197,68 +197,177 @@ def generate_script(api_key, custom_topic=None, story_context=None):
     time_taken = story_context.get("timeTaken")
     story_type = story_context.get("storyType", "dev_journey")
 
+    is_genesis = story_type == "genesis_archive"
+    is_daily_log = story_type == "daily_log"
     is_dev_journey = (
+        is_genesis or is_daily_log or
         story_type == "dev_journey" or
         not custom_topic or
-        "सच्चाई की वेल्थ" in (custom_topic or "") or
         "Dev" in (custom_topic or "") or
         "कोड" in (custom_topic or "") or
         "विकास" in (custom_topic or "")
     )
+    is_wealth_of_truth = "सच्चाई की वेल्थ" in (custom_topic or "") or story_type == "wealth_of_truth"
 
-    if is_dev_journey:
-        prompt = f"""You are the lead narrative architect and authentic tech storyteller for "कोड और सृजन की जीवंत दास्तान" (The Real Build Chronicles) by Aman Tech Solutions (Proprietor: Aman Kumar, anshuka.in).
+    if is_genesis:
+        prompt = f"""You are the lead chronicler for "नींव से निर्माण तक: द एवोल्यूशन सीरीज" (The Genesis Archive) by Aman Tech Solutions (Proprietor: Aman Kumar, anshuka.in).
+Ethos:
+- Serialized architectural retrospective from day 1 to present stage.
+- Tracing foundational decisions: early git commits, sovereign live voice, Firestore security hardening, P2P mesh, and edge database architecture.
+- Tone: Thoughtful, technical, honest engineering journey. We are in active development mode ("सृजन का निरंतर सफर, विकास के नए क्षितिज"). NOT false final victory slogans, but progressive milestones and lessons learned.
+- Future roadmap: Give viewers clear guidance/hints on where the platform is heading ("आगे की दिशा").
 
-Ethos & Directives:
-- REAL-WORLD DEVELOPER JOURNEY (Building in Public): Move completely away from repetitive theoretical slogans. Tell the genuine, inspiring behind-the-scenes engineering chronicle of building the ATS sovereign software platform.
-- Real discussions: Ideas discussed in IDE chats, functionalities requested, complex design decisions, lines of code written, real errors debugged, git commits pushed to GitHub, benchmarks cleared, and live edge deployment.
-- Tone: Natural, captivating, inspiring, conversational Hindi (Devanagari script) with high emotional resonance for spoken voice. Create an appealing, poetic, professional title (NOT literal like 'रियल टाइम सच्चाई').
+Context:
+- Chapter Focus: {custom_topic or "नींव का पहला पत्थर और संप्रभु संकल्प"}
+{f"- Commit Archive: {', '.join(git_commits[:5]) if isinstance(git_commits, list) else git_commits}" if git_commits else ""}
+{f"- Core Hurdles Overcome: {issues_faced}" if issues_faced else ""}
+{f"- Milestones Cleared: {result_milestone}" if result_milestone else ""}
 
-Context from Live Work & Git:
-- Target Story Focus: {custom_topic or "वास्तविक विकास गाथा — कोड और संकल्प का सफर"}
-{f"- IDE Chat & Features Requested: {chat_summary}" if chat_summary else ""}
-{f"- Git Commits & Pushes: {', '.join(git_commits[:5]) if isinstance(git_commits, list) else git_commits}" if git_commits else ""}
-{f"- Issues Faced & Debugged: {issues_faced}" if issues_faced else ""}
-{f"- Results & Milestones: {result_milestone}" if result_milestone else ""}
-{f"- Execution Time: {time_taken}" if time_taken else ""}
-
-Generate a short, powerful, conversational broadcast monologue in natural, authentic Hindi.
-Duration: 35 to 50 seconds of speech (approx. 55-80 words).
+Generate a short, captivating broadcast monologue in natural, authentic Hindi (Devanagari script).
+Duration: 35 to 50 seconds (approx. 55-80 words).
 
 Structure into 3 visual scenes:
-1. Scene 1 (The Challenge & Conception / विचार और चुनौती): What feature was conceived, what technical obstacle arose.
-2. Scene 2 (The Coding Battle & Git Pushes / समाधान और गिट कमिट्स): How we iterated, chat brainstormed, debugged, and pushed to repo.
-3. Scene 3 (The Milestone & Live Result / सफलता और परिणाम): Tests passing, live deployment running, and the thrill of real creation.
+1. Scene 1 (नींव और संकल्प): Architecture origin, initial idea, core technical hurdle.
+2. Scene 2 (इंजीनियरिंग संघर्ष): Refactoring, commits pushed, trial and debugging.
+3. Scene 3 (सीख और आगामी दिशा): Lessons learned, present state, and clear hints on the future roadmap.
 
 Output STRICT JSON:
 {{
-  "title": "Captivating Hindi Title (e.g. 'कोड और संकल्प: जब स्क्रीन के पीछे एक विचार ने जन्म लिया')",
-  "subtitle": "अमन टेक सॉल्यूशंस • निर्माण की जीवंत दास्तान",
-  "dialogue": "Continuous spoken monologue in natural Hindi Devanagari script for emotive TTS voice",
-  "summary": "1-sentence summary of today's build story",
-  "tags": ["Aman Kumar", "BuildingInPublic", "DevDiary", "ATSPlatform", "CodeChronicles", "GitHubJourney"],
-  "socialCaption": "Short engaging post caption with hashtags for YouTube/Facebook/Instagram",
+  "title": "Poetic Chapter Title (e.g. 'अध्याय १: जब पहली बार स्क्रीन पर जागी संप्रभु आवाज़')",
+  "subtitle": "अमन टेक सॉल्यूशंस • नींव से निर्माण तक (The Genesis Archive)",
+  "dialogue": "Continuous spoken monologue in natural Hindi Devanagari script for TTS voice",
+  "summary": "1-sentence summary of this foundational chapter",
+  "tags": ["AmanKumar", "GenesisArchive", "BuildingInPublic", "ATSPlatform", "TechEvolution"],
+  "socialCaption": "Engaging caption with chapter details and next milestone hints for YouTube/Facebook/Instagram",
   "scenes": [
     {{
-      "brand": "सृजन की दास्तान",
-      "subBrand": "BUILD IN PUBLIC",
-      "tag": "भाग १: विचार और चुनौती",
+      "brand": "नींव से निर्माण",
+      "subBrand": "GENESIS ARCHIVE",
+      "tag": "भाग १: नींव और संकल्प",
       "heading": "Catchy Scene 1 Title in Hindi (max 5-7 words)",
       "points": ["Short punchy highlight 1", "Short punchy highlight 2"],
       "accent": "gold"
     }},
     {{
-      "brand": "सृजन की दास्तान",
-      "subBrand": "CODE & COMMIT",
-      "tag": "भाग २: समाधान और गिट कमिट्स",
+      "brand": "नींव से निर्माण",
+      "subBrand": "THE STRUGGLE",
+      "tag": "भाग २: इंजीनियरिंग संघर्ष",
       "heading": "Catchy Scene 2 Title in Hindi (max 5-7 words)",
       "points": ["Short punchy highlight 1", "Short punchy highlight 2"],
       "accent": "cyan"
     }},
     {{
-      "brand": "सृजन की दास्तान",
-      "subBrand": "LIVE RESULTS",
-      "tag": "भाग ३: सफलता और परिणाम",
+      "brand": "नींव से निर्माण",
+      "subBrand": "NEXT HORIZON",
+      "tag": "भाग ३: सीख और आगामी दिशा",
+      "heading": "Catchy Scene 3 Title in Hindi (max 5-7 words)",
+      "points": ["Short punchy highlight 1", "Short punchy highlight 2"],
+      "accent": "emerald"
+    }}
+  ]
+}}"""
+    elif is_daily_log:
+        prompt = f"""You are the lead storyteller for "आज का फ्रंटलाइन विमर्श: दैनिक निर्माण लॉग" (Today's Daily Build Log) by Aman Tech Solutions (Proprietor: Aman Kumar, anshuka.in).
+Ethos:
+- Real-time build-in-public evening reflection: what we actually worked on TODAY.
+- Honest, humble, active development mode: Ideas brainstormed in chat, features requested today, bugs debugged, and what we learned today.
+- Narrative harmony: Connects today's work to the foundational platform roots.
+- Tone: Inspiring, conversational, authentic Hindi spoken voice (NOT literal, NO superficial victory claims, genuine progress).
+
+Context from Today's Work:
+- Today's Focus: {custom_topic or "आज का वास्तविक कोडिंग विमर्श और फ्रंटलाइन प्रगति"}
+{f"- Today's Chat & Feature Brainstorms: {chat_summary}" if chat_summary else ""}
+{f"- Today's Git Commits & Pushes: {', '.join(git_commits[:5]) if isinstance(git_commits, list) else git_commits}" if git_commits else ""}
+{f"- Today's Hurdles Tackled: {issues_faced}" if issues_faced else ""}
+{f"- Today's Milestone: {result_milestone}" if result_milestone else ""}
+
+Generate a short, captivating broadcast monologue in natural, authentic Hindi.
+Duration: 35 to 50 seconds (approx. 55-80 words).
+
+Structure into 3 visual scenes:
+1. Scene 1 (आज का विचार और विमर्श): What feature we brainstormed today in chat, what user request came in.
+2. Scene 2 (वास्तविक कोडिंग और चुनौतियाँ): Real bugs hit today, fixes made, git commits pushed.
+3. Scene 3 (आज की सीख और कल का लक्ष्य): Lessons learned today, tonight's status, and tomorrow's immediate next step.
+
+Output STRICT JSON:
+{{
+  "title": "Poetic Daily Title (e.g. 'आज का विमर्श: जब चैट के सुझाव बने कोड की धड़कन')",
+  "subtitle": "अमन टेक सॉल्यूशंस • दैनिक निर्माण लॉग (Daily Build Log)",
+  "dialogue": "Continuous spoken monologue in natural Hindi Devanagari script for TTS voice",
+  "summary": "1-sentence summary of today's real build work",
+  "tags": ["AmanKumar", "DailyBuildLog", "BuildingInPublic", "ATSPlatform", "DevChronicles"],
+  "socialCaption": "Engaging evening reflection caption with today's learnings and tomorrow's goals",
+  "scenes": [
+    {{
+      "brand": "दैनिक निर्माण लॉग",
+      "subBrand": "TODAY'S DIALOGUE",
+      "tag": "भाग १: आज का विमर्श",
+      "heading": "Catchy Scene 1 Title in Hindi (max 5-7 words)",
+      "points": ["Short punchy highlight 1", "Short punchy highlight 2"],
+      "accent": "gold"
+    }},
+    {{
+      "brand": "दैनिक निर्माण लॉग",
+      "subBrand": "DEBUG & COMMIT",
+      "tag": "भाग २: कोडिंग और समाधान",
+      "heading": "Catchy Scene 2 Title in Hindi (max 5-7 words)",
+      "points": ["Short punchy highlight 1", "Short punchy highlight 2"],
+      "accent": "cyan"
+    }},
+    {{
+      "brand": "दैनिक निर्माण लॉग",
+      "subBrand": "TOMORROW'S GOAL",
+      "tag": "भाग ३: सीख और कल का लक्ष्य",
+      "heading": "Catchy Scene 3 Title in Hindi (max 5-7 words)",
+      "points": ["Short punchy highlight 1", "Short punchy highlight 2"],
+      "accent": "emerald"
+    }}
+  ]
+}}"""
+    elif is_wealth_of_truth:
+        prompt = f"""You are the philosophical content architect for "सच्चाई की वेल्थ — जीवन, संप्रभुता और तकनीक" by Aman Tech Solutions (Proprietor: Aman Kumar, anshuka.in).
+Ethos:
+- Truth, digital sovereignty, authentic wealth, and technological empowerment.
+- Philosophical reflections bridging timeless human wisdom with sovereign digital tools (ATS Platform, EtherComm, anshuka.in).
+Target Topic: "{custom_topic or 'सच्चाई की वेल्थ: डिजिटल युग में संप्रभुता का अर्थ'}"
+
+Generate a short, inspiring broadcast monologue in natural, evocative Hindi.
+Duration: 35 to 45 seconds (approx. 50-70 words).
+
+Structure into 3 visual scenes:
+1. Scene 1 (चिंतन और सत्य): Philosophical opening question or reality check.
+2. Scene 2 (संप्रभु तकनीक और समाधान): EtherComm, ATS Platform, true sovereignty.
+3. Scene 3 (आत्मविश्वास और आह्वान): anshuka.in and living with authentic digital freedom.
+
+Output STRICT JSON:
+{{
+  "title": "Short Hindi title (max 7-9 words, e.g. 'सच्चाई की वेल्थ: जब तकनीक इंसान की ताकत बने')",
+  "subtitle": "अमन टेक सॉल्यूशंस • सच्चाई की वेल्थ",
+  "dialogue": "Continuous spoken monologue in evocative Hindi Devanagari script for TTS voice",
+  "summary": "1-sentence summary",
+  "tags": ["AmanKumar", "सच्चाईकीवेल्थ", "DigitalSovereignty", "ATSPlatform", "WealthOfTruth"],
+  "socialCaption": "Short engaging post caption with hashtags for YouTube/Facebook/Instagram",
+  "scenes": [
+    {{
+      "brand": "सच्चाई की वेल्थ",
+      "subBrand": "TRUTH OF WEALTH",
+      "tag": "भाग १: चिंतन और सत्य",
+      "heading": "Catchy Scene 1 Title in Hindi (max 5-7 words)",
+      "points": ["Short punchy highlight 1", "Short punchy highlight 2"],
+      "accent": "gold"
+    }},
+    {{
+      "brand": "सच्चाई की वेल्थ",
+      "subBrand": "SOVEREIGN VALUE",
+      "tag": "भाग २: संप्रभु तकनीक",
+      "heading": "Catchy Scene 2 Title in Hindi (max 5-7 words)",
+      "points": ["Short punchy highlight 1", "Short punchy highlight 2"],
+      "accent": "cyan"
+    }},
+    {{
+      "brand": "सच्चाई की वेल्थ",
+      "subBrand": "HUMAN EMPOWERMENT",
+      "tag": "भाग ३: आत्मविश्वास और आह्वान",
       "heading": "Catchy Scene 3 Title in Hindi (max 5-7 words)",
       "points": ["Short punchy highlight 1", "Short punchy highlight 2"],
       "accent": "emerald"
@@ -617,6 +726,23 @@ def execute_broadcast_pipeline(req: TriggerRequest):
             f.write(f"duration {dur:.3f}\n")
         f.write(f"file '{scene_images[-1]}'\n")
 
+    ticker_font = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
+    if not os.path.exists(ticker_font):
+        ticker_font = "/usr/share/fonts/truetype/noto/NotoSansDevanagari-Bold.ttf"
+
+    filter_complex_str = (
+        f"[1:a]showwaves=s={ww}x{wh}:mode=cline:colors=0x38bdf8|0x10b981:rate=25[fg];"
+        f"[0:v][fg]overlay=x={wx}:y={wy}:shortest=1"
+    )
+    if os.path.exists(ticker_font):
+        filter_complex_str += (
+            f"[v1];"
+            f"[v1]drawtext=fontfile='{ticker_font}':text='● ON-AIR':fontsize=12:fontcolor=0xef4444:enable='lt(mod(t,1),0.6)':x={WIDTH_LANDSCAPE-220}:y=18[v2];"
+            f"[v2]drawtext=fontfile='{ticker_font}':text='⚡ ATS BUILD LOG • REAL-TIME PIPELINE • anshuka.in • SOVEREIGN TECH':fontsize=12:fontcolor=0x94a3b8:x='w-t*110':y={HEIGHT_LANDSCAPE-26}[outv]"
+        )
+    else:
+        filter_complex_str += "[outv]"
+
     ffmpeg_cmd = [
         "ffmpeg", "-y",
         "-threads", "1",
@@ -624,9 +750,7 @@ def execute_broadcast_pipeline(req: TriggerRequest):
         "-safe", "0",
         "-i", concat_txt,
         "-i", audio_path,
-        "-filter_complex",
-        f"[1:a]showwaves=s={ww}x{wh}:mode=cline:colors=0x38bdf8|0x10b981:rate=25[fg];"
-        f"[0:v][fg]overlay=x={wx}:y={wy}:shortest=1[outv]",
+        "-filter_complex", filter_complex_str,
         "-map", "[outv]",
         "-map", "1:a",
         "-c:v", "libx264",
@@ -774,24 +898,38 @@ def get_dev_story_status():
     }
 
 async def autonomous_scheduler_loop():
-    last_run_date = None
+    last_genesis_date = None
+    last_daily_date = None
     while True:
         try:
             await asyncio.sleep(60)
-            auto_enabled = os.environ.get("AUTO_DEV_SCHEDULER_ENABLED", "false").lower() in ("true", "1", "yes")
+            auto_enabled = os.environ.get("AUTO_DEV_SCHEDULER_ENABLED", "true").lower() in ("true", "1", "yes")
             if not auto_enabled:
                 continue
 
-            target_hour = int(os.environ.get("DEV_SCHEDULER_HOUR_UTC", "13")) # 13:00 UTC = 18:30 IST
             now_utc = datetime.now(timezone.utc)
             today_str = now_utc.strftime("%Y-%m-%d")
 
-            if now_utc.hour == target_hour and last_run_date != today_str:
-                last_run_date = today_str
-                print(f"[Autonomous Dev Scheduler] Executing daily Dev Story broadcast for {today_str}...")
+            # Slot 1: Genesis Archive (07:30 UTC = 13:00 IST)
+            genesis_hour = int(os.environ.get("GENESIS_SCHEDULER_HOUR_UTC", "7"))
+            if now_utc.hour == genesis_hour and last_genesis_date != today_str:
+                last_genesis_date = today_str
+                print(f"[Autonomous Dev Scheduler] Executing daily Genesis Archive broadcast for {today_str}...")
                 req = TriggerRequest(
-                    customTopic="दैनिक निर्माण और विकास की जीवंत दास्तान (Daily Build Chronicles)",
-                    storyType="dev_journey",
+                    customTopic="नींव से निर्माण तक: द एवोल्यूशन सीरीज (The Genesis Archive)",
+                    storyType="genesis_archive",
+                    platforms=["youtube", "facebook", "instagram"]
+                )
+                execute_broadcast_pipeline(req)
+
+            # Slot 2: Daily Build Log (16:00 UTC = 21:30 IST)
+            daily_hour = int(os.environ.get("DAILY_SCHEDULER_HOUR_UTC", "16"))
+            if now_utc.hour == daily_hour and last_daily_date != today_str:
+                last_daily_date = today_str
+                print(f"[Autonomous Dev Scheduler] Executing nightly Daily Build Log broadcast for {today_str}...")
+                req = TriggerRequest(
+                    customTopic="आज का फ्रंटलाइन विमर्श: दैनिक निर्माण लॉग (Daily Build Log)",
+                    storyType="daily_log",
                     platforms=["youtube", "facebook", "instagram"]
                 )
                 execute_broadcast_pipeline(req)
