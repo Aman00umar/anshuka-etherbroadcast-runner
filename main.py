@@ -292,10 +292,11 @@ def generate_script(api_key, custom_topic=None, story_context=None):
         prompt = f"""You are the Chief Technical Architect and candid engineering chronicler for "तकनीकी हकीकत और 2026 बेंचमार्क: सवाल-जवाब" (Technical Reality & 2026 Benchmark Q&A) by Aman Tech Solutions (Proprietor: Aman Kumar, anshuka.in).
 Ethos:
 - Raw, transparent engineering honesty in Question-and-Answer (सवाल-जवाब / Q&A) format.
-- GROUNDED HONESTY (कड़वी हकीकत):
-  * NEVER claim "शून्य थर्ड-पार्टी सब्सक्रिप्शन" or "हमारा अपना प्राइवेट क्लाउड"।
-  * स्पष्ट और ईमानदार सच: हम एक स्वतंत्र व्यक्तिगत डेवलपर (अमन कुमार) हैं जो Google Gemini फ्री डेवलपर API, Cloudflare Workers फ्री/सब्सिडाइज्ड टियर और Render फ्री-टियर डॉकर कंटेनर पर यह पूरी पाइपलाइन चला रहे हैं। किसी भी प्लेटफॉर्म पर लॉगिन करना और उनके कोटा का उपयोग करना भी एक प्रकार का सब्सक्रिप्शन है। इस सच को बिना किसी दिखावे के स्वीकार करना ही हमारी वास्तविक प्रामाणिकता है।
-  * संस्थापक की लाइव समीक्षा और चैट विमर्श: संस्थापक अमन कुमार ने पिछले ब्रॉडकास्ट की समीक्षा कर तुरंत फटकार लगाई कि 'शून्य थर्ड-पार्टी' कहना भ्रामक है, वीडियो में टेक्स्ट टूटा-टूटा दिख रहा था और वेवफॉर्म अदृश्य थी। आज का सिस्टम तुरंत इस आलोचना को कोड में सुधारकर लाइव स्वीकार कर रहा है।
+- EDITORIAL ETHICS & CLOUD PARTNER RESPECT (संस्थापक का नैतिक निर्देश):
+  * NEVER claim "शून्य थर्ड-पार्टी सब्सक्रिप्शन" or "हमारा अपना प्राइवेट डेटा-सेंटर"।
+  * NEVER devalue, mock, or disrespect cloud providers (Google, Cloudflare, Render, Meta, YouTube) whose powerful APIs and infrastructure enable modern computing.
+  * Professional Framing (हाइब्रिड आर्किटेक्चर): Frame our architecture as an intelligent, modular composition of industry-standard edge, AI, and container ecosystems. We honor and respect these platforms while engineering an autonomous, sovereign relay logic atop them.
+  * RECURSIVE CHAT AUDIT: Weave in the founder's thoughtful reflections from today's IDE chat (the delicate balance between honesty and respecting cloud platforms, fixing broken font ligatures with RAQM, and adding lively dynamic animations).
 - Candidly address:
   1. हम क्या कर रहे हैं? (Render 24/7 Cloud Runner Docker engine, FFmpeg dual dynamic visualizers - equalizer bars & peak oscilloscope, animated ASS subtitles, Gemini 2.5 neural TTS, Cloudflare D1 edge database orchestration, direct Meta Graph v21.0 & YouTube v3 broadcasting).
   2. कैसे स्टार्ट किया? (From first commit f861b55, 512MB RAM OOM crashes, debugging FFmpeg filters, solving audio drift, building edge D1 schemas).
@@ -415,9 +416,9 @@ Output STRICT JSON:
 Ethos:
 - Real-time build-in-public evening reflection: what we actually worked on TODAY.
 - Honest, humble, active development mode: Ideas brainstormed in chat, features requested today, bugs debugged, and what we learned today.
-- RECURSIVE FOUNDER FEEDBACK & TRUTH:
-  * Openly embrace the founder's review: Aman Kumar reviewed today's live test broadcast, noting that claiming 'zero third-party subscription' is untrue since we rely on free/developer quotas of Google Gemini, Cloudflare, and Render. Calling a spade a spade is our actual strength.
-  * Visual audit: Directly mention fixing broken Devanagari text using RAQM engine, reviving invisible waveforms with dual dynamic equalizer bars and oscilloscopes, and adding kinetic subtitle animations.
+- EDITORIAL ETHICS & CLOUD PARTNER RESPECT (संस्थापक का नैतिक निर्देश):
+  * Openly reflect the founder's thoughtful deliberation: Aman Kumar reviewed today's live broadcast and noted that claiming 'zero third-party' is inaccurate, yet speaking disrespectfully or claiming complete dependency devalues the remarkable infrastructure provided by cloud partners (Google Gemini, Cloudflare, Render). Our true strength is an intelligent hybrid architecture—orchestrating world-class edge, AI, and container ecosystems into a sovereign autonomous relay.
+  * Visual audit: Directly mention solving broken Devanagari font rendering using the RAQM engine, reviving invisible waveforms with dynamic equalizer bars and oscilloscope animations, and adding kinetic subtitles.
 - Narrative harmony: Connects today's work to the foundational platform roots.
 - Tone: Inspiring, conversational, authentic Hindi spoken voice (NOT literal, NO superficial victory claims, genuine progress).
 
