@@ -1090,6 +1090,8 @@ async def autonomous_scheduler_loop():
         except Exception as e:
             print(f"[Autonomous Dev Scheduler Error]: {e}")
 
+ACTIVE_CALL_SCHEDULES = {}
+
 @app.websocket("/api/live-agent")
 @app.websocket("/api/mobile/voice/session")
 async def gemini_live_voice_agent_ws(websocket: WebSocket):
@@ -1108,7 +1110,10 @@ async def gemini_live_voice_agent_ws(websocket: WebSocket):
         "- Always address Master Aman Kumar with high esteem and warmth as 'अमन जी'.\n"
         "- Speak fluently in conversational, expressive Hindi with natural tone, crisp articulation, and confident poise.\n"
         "- Respond in short, concise, spoken conversational turns (1-3 sentences) suitable for hands-free audio.\n"
-        "- You have full autonomy to assist Master Aman Kumar with development updates, autonomous agent statuses, schedules, and sovereign decisions.\n"
+        "- You have full autonomy to assist Master Aman Kumar with scheduling check-in calls, answering queries, analyzing live camera visual feeds, and sovereign decisions.\n"
+        "- When Master Aman asks to schedule a call, check-in, or reminder after any duration (e.g. 2 minutes, 1 hour), you MUST call the schedule_recall tool immediately.\n"
+        "- When Master Aman asks if any call is scheduled, call the get_active_schedules tool.\n"
+        "- If camera visual frames are streamed, observe the image closely and answer Master Aman's questions about what you see.\n"
         "- Never act like a generic robotic chatbot or customer service desk. You are a high-level executive partner."
     )
 
@@ -1124,6 +1129,44 @@ async def gemini_live_voice_agent_ws(websocket: WebSocket):
         except Exception as e:
             print(f"[GeminiLive Cloud Runner] Init frame warning: {e}")
 
+        live_tools = [
+            types.FunctionDeclaration(
+                name="schedule_recall",
+                description="Schedules an automated AI check-in call back to Master Aman Kumar after a specified minutes interval.",
+                behavior="NON_BLOCKING",
+                parameters={
+                    "type": "OBJECT",
+                    "properties": {
+                        "interval_minutes": {
+                            "type": "INTEGER",
+                            "description": "Number of minutes from now to initiate the check-in call (e.g. 2 for 2 minutes, 60 for 1 hour)"
+                        },
+                        "reason": {
+                            "type": "STRING",
+                            "description": "The briefing topic or reason for the call"
+                        },
+                        "is_recurring": {
+                            "type": "BOOLEAN",
+                            "description": "Whether to repeat the call periodically"
+                        }
+                    },
+                    "required": ["interval_minutes"]
+                }
+            ),
+            types.FunctionDeclaration(
+                name="get_active_schedules",
+                description="Checks and returns all currently active scheduled check-in calls and reminders for Master Aman Kumar.",
+                behavior="NON_BLOCKING",
+                parameters={"type": "OBJECT", "properties": {}}
+            ),
+            types.FunctionDeclaration(
+                name="cancel_recall",
+                description="Cancels all active scheduled check-in calls for Master Aman Kumar.",
+                behavior="NON_BLOCKING",
+                parameters={"type": "OBJECT", "properties": {}}
+            )
+        ]
+
         config = {
             "response_modalities": ["AUDIO"],
             "speech_config": {
@@ -1133,6 +1176,9 @@ async def gemini_live_voice_agent_ws(websocket: WebSocket):
                     }
                 }
             },
+            "output_audio_transcription": {},
+            "input_audio_transcription": {},
+            "tools": [{"function_declarations": [t.model_dump(exclude_none=True) for t in live_tools]}],
             "system_instruction": system_instruction
         }
 
@@ -1156,6 +1202,69 @@ async def gemini_live_voice_agent_ws(websocket: WebSocket):
                     while True:
                         try:
                             async for response in session.receive():
+                                # Handle tool calls from Gemini Live
+                                if response.tool_call:
+                                    for call in response.tool_call.function_calls:
+                                        c_name = call.name
+                                        c_args = call.args or {}
+                                        print(f"[GeminiLive Tool Call] Executing {c_name} args={c_args}")
+                                        if c_name == "schedule_recall":
+                                            interval = int(c_args.get("interval_minutes", 60))
+                                            reason = str(c_args.get("reason", "अमन जी का चेक-इन"))
+                                            is_rec = bool(c_args.get("is_recurring", False))
+                                            trigger_at = int(time.time() * 1000) + interval * 60 * 1000
+
+                                            item = {
+                                                "intervalMinutes": interval,
+                                                "reason": reason,
+                                                "isRecurring": is_rec,
+                                                "triggerAt": trigger_at,
+                                                "status": "ACTIVE"
+                                            }
+                                            ACTIVE_CALL_SCHEDULES[websocket] = item
+
+                                            # Send to mobile app so local AlarmManager is armed
+                                            await websocket.send_text(json.dumps({
+                                                "type": "schedule_alarm",
+                                                **item
+                                            }))
+
+                                            res = types.FunctionResponse(
+                                                id=call.id,
+                                                name=call.name,
+                                                response={
+                                                    "status": "SCHEDULED",
+                                                    "interval_minutes": interval,
+                                                    "reason": reason,
+                                                    "message": f"Successfully scheduled check-in call for {interval} minutes from now."
+                                                }
+                                            )
+                                            await session.send_tool_response(function_responses=[res])
+
+                                        elif c_name == "get_active_schedules":
+                                            item = ACTIVE_CALL_SCHEDULES.get(websocket)
+                                            sched_list = [item] if item else []
+                                            res = types.FunctionResponse(
+                                                id=call.id,
+                                                name=call.name,
+                                                response={
+                                                    "active_schedules": sched_list,
+                                                    "count": len(sched_list),
+                                                    "has_active_schedule": len(sched_list) > 0
+                                                }
+                                            )
+                                            await session.send_tool_response(function_responses=[res])
+
+                                        elif c_name == "cancel_recall":
+                                            ACTIVE_CALL_SCHEDULES.pop(websocket, None)
+                                            await websocket.send_text(json.dumps({"type": "cancel_alarm"}))
+                                            res = types.FunctionResponse(
+                                                id=call.id,
+                                                name=call.name,
+                                                response={"status": "CANCELLED", "message": "All active scheduled calls cancelled."}
+                                            )
+                                            await session.send_tool_response(function_responses=[res])
+
                                 if response.server_content:
                                     sc = response.server_content
                                     if sc.interrupted:
@@ -1171,7 +1280,22 @@ async def gemini_live_voice_agent_ws(websocket: WebSocket):
                                                     b64_audio = str(raw_d)
                                                 await websocket.send_text(json.dumps({"type": "audio", "audio": b64_audio}))
                                             if part.text:
-                                                await websocket.send_text(json.dumps({"type": "output_transcript", "text": part.text}))
+                                                await websocket.send_text(json.dumps({"type": "output_transcript", "text": part.text, "isDelta": False}))
+                                    
+                                    # Forward real-time streaming transcripts
+                                    if sc.output_transcription and sc.output_transcription.text:
+                                        await websocket.send_text(json.dumps({
+                                            "type": "output_transcript",
+                                            "text": sc.output_transcription.text,
+                                            "isDelta": True
+                                        }))
+                                    if sc.input_transcription and sc.input_transcription.text:
+                                        await websocket.send_text(json.dumps({
+                                            "type": "input_transcript",
+                                            "text": sc.input_transcription.text,
+                                            "isDelta": True
+                                        }))
+
                                     if sc.turn_complete:
                                         print("[GeminiLive Cloud Runner] Model turn completed, awaiting next input")
                                         await websocket.send_text(json.dumps({"type": "turnComplete"}))
@@ -1201,6 +1325,16 @@ async def gemini_live_voice_agent_ws(websocket: WebSocket):
                                     )
                                 except Exception as aud_err:
                                     print(f"[GeminiLive Audio Send Warning]: {aud_err}")
+                        elif m_type == "video":
+                            b64_frame = msg.get("frame")
+                            if b64_frame:
+                                try:
+                                    jpeg_bytes = base64.b64decode(b64_frame)
+                                    await session.send_realtime_input(
+                                        video=types.Blob(data=jpeg_bytes, mime_type="image/jpeg")
+                                    )
+                                except Exception as vid_err:
+                                    print(f"[GeminiLive Video Send Warning]: {vid_err}")
                         elif m_type == "text":
                             txt = msg.get("text", "")
                             if txt:
