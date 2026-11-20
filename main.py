@@ -68,9 +68,29 @@ class TriggerRequest(BaseModel):
     voicePersona: Optional[str] = "Puck"
 
 def get_font_hi(size, bold=False):
+    local_font = os.path.join(os.path.dirname(__file__), "fonts", "NotoSansDevanagari-Bold.ttf" if bold else "NotoSansDevanagari-Regular.ttf")
     candidate_paths = [
+        local_font,
         "/usr/share/fonts/truetype/noto/NotoSansDevanagari-Bold.ttf" if bold else "/usr/share/fonts/truetype/noto/NotoSansDevanagari-Regular.ttf",
         "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf" if bold else "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+    ]
+    for p in candidate_paths:
+        if os.path.exists(p):
+            try:
+                # Use RAQM layout engine for proper complex Devanagari ligatures/shaping
+                return ImageFont.truetype(p, size, layout_engine=getattr(ImageFont.Layout, 'RAQM', None))
+            except:
+                try:
+                    return ImageFont.truetype(p, size)
+                except:
+                    pass
+    return ImageFont.load_default()
+
+def get_font_en(size, bold=False):
+    candidate_paths = [
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf" if bold else "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+        os.path.join(os.path.dirname(__file__), "fonts", "NotoSansDevanagari-Bold.ttf" if bold else "NotoSansDevanagari-Regular.ttf"),
+        "/usr/share/fonts/truetype/noto/NotoSansDevanagari-Bold.ttf" if bold else "/usr/share/fonts/truetype/noto/NotoSansDevanagari-Regular.ttf",
     ]
     for p in candidate_paths:
         if os.path.exists(p):
@@ -80,18 +100,63 @@ def get_font_hi(size, bold=False):
                 pass
     return ImageFont.load_default()
 
-def get_font_en(size, bold=False):
-    candidate_paths = [
-        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf" if bold else "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-        "/usr/share/fonts/truetype/noto/NotoSansDevanagari-Bold.ttf" if bold else "/usr/share/fonts/truetype/noto/NotoSansDevanagari-Regular.ttf",
+def draw_corner_brackets(draw, x1, y1, x2, y2, color, length=24, width=3):
+    # Top-Left
+    draw.line([x1, y1, x1 + length, y1], fill=color, width=width)
+    draw.line([x1, y1, x1, y1 + length], fill=color, width=width)
+    # Top-Right
+    draw.line([x2 - length, y1, x2, y1], fill=color, width=width)
+    draw.line([x2, y1, x2, y1 + length], fill=color, width=width)
+    # Bottom-Left
+    draw.line([x1, y2, x1 + length, y2], fill=color, width=width)
+    draw.line([x1, y2 - length, x1, y2], fill=color, width=width)
+    # Bottom-Right
+    draw.line([x2 - length, y2, x2, y2], fill=color, width=width)
+    draw.line([x2, y2 - length, x2, y2], fill=color, width=width)
+
+def format_ass_time(seconds: float) -> str:
+    hrs = int(seconds // 3600)
+    mins = int((seconds % 3600) // 60)
+    secs = seconds % 60
+    return f"{hrs}:{mins:02d}:{secs:05.2f}"
+
+def generate_ass_subtitles(dialogue: str, total_duration: float, ass_path: str, font_name: str = "Noto Sans Devanagari"):
+    import re
+    # Split by punctuation into natural spoken lines
+    sentences = [s.strip() for s in re.split(r'[।!?\n.]+', dialogue) if s.strip()]
+    if not sentences:
+        sentences = [dialogue.strip()]
+
+    total_len = sum(len(s) for s in sentences)
+    ass_lines = [
+        "[Script Info]",
+        "ScriptType: v4.00+",
+        f"PlayResX: {WIDTH_LANDSCAPE}",
+        f"PlayResY: {HEIGHT_LANDSCAPE}",
+        "",
+        "[V4+ Styles]",
+        "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding",
+        f"Style: Default,{font_name},22,&H00FFFFFF,&H000000FF,&H00000000,&H80000000,1,0,0,0,100,100,0,0,1,2,1,2,60,60,250,1",
+        "",
+        "[Events]",
+        "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text"
     ]
-    for p in candidate_paths:
-        if os.path.exists(p):
-            try:
-                return ImageFont.truetype(p, size)
-            except:
-                pass
-    return ImageFont.load_default()
+
+    current_time = 0.0
+    for s in sentences:
+        dur = max(1.8, (len(s) / max(1, total_len)) * total_duration)
+        if current_time + dur > total_duration:
+            dur = max(0.5, total_duration - current_time)
+        start_str = format_ass_time(current_time)
+        end_str = format_ass_time(current_time + dur)
+        clean_s = s.replace("\n", " ").strip()
+        ass_lines.append(f"Dialogue: 0,{start_str},{end_str},Default,,0,0,0,,{{\\fad(200,200)}}{clean_s}")
+        current_time += dur
+        if current_time >= total_duration:
+            break
+
+    with open(ass_path, "w", encoding="utf-8") as f:
+        f.write("\n".join(ass_lines))
 
 def wrap_text(text, font, max_width, draw):
     words = text.split()
@@ -138,13 +203,15 @@ def create_scene_frame(scene, scene_idx, total_scenes, title, subtitle, out_png)
     card_x1, card_y1, card_x2, card_y2 = 80, 80, WIDTH_LANDSCAPE - 80, 480
     draw.rectangle([card_x1, card_y1, card_x2, card_y2], fill=CARD_BG, outline=CARD_BORDER, width=2)
     draw.line([card_x1, card_y1, card_x2, card_y1], fill=accent_color, width=4)
+    # Tech Corner Brackets for High-Tech HUD Styling
+    draw_corner_brackets(draw, card_x1, card_y1, card_x2, card_y2, accent_color, length=24, width=3)
 
     # Category Pill
     pill_tag = scene.get("tag", f"भाग {scene_idx + 1}")
-    draw.rectangle([card_x1 + 30, card_y1 + 25, card_x1 + 340, card_y1 + 55], fill=(30, 41, 59), outline=accent_color)
+    draw.rectangle([card_x1 + 30, card_y1 + 25, card_x1 + 360, card_y1 + 55], fill=(30, 41, 59), outline=accent_color)
     draw.text((card_x1 + 42, card_y1 + 30), f"★ {pill_tag}", font=get_font_hi(13, bold=True), fill=accent_color)
 
-    # Scene Heading
+    # Scene Heading (Devanagari with proper RAQM shaping)
     font_heading = get_font_hi(26, bold=True)
     h_lines = wrap_text(scene.get("heading", title), font_heading, card_x2 - card_x1 - 60, draw)
     ty = card_y1 + 75
@@ -173,10 +240,14 @@ def create_scene_frame(scene, scene_idx, total_scenes, title, subtitle, out_png)
 
     draw.text((card_x1 + 35, card_y2 - 35), "वक्ता: अमन कुमार (Aman Kumar) — संस्थापक, Aman Tech Solutions", font=get_font_hi(13, bold=True), fill=ACCENT_GOLD)
 
-    # Waveform Container Box
+    # Dual Visualizer Container Box (Split Equalizer & Oscilloscope)
     wave_x1, wave_y1, wave_x2, wave_y2 = 80, 505, WIDTH_LANDSCAPE - 80, 660
     draw.rectangle([wave_x1, wave_y1, wave_x2, wave_y2], fill=(13, 19, 33), outline=CARD_BORDER, width=2)
-    draw.text((wave_x1 + 25, wave_y1 + 10), "AUDIO WAVEFORM SPECTRUM  |  GEMINI EMOTIVE ENGINE", font=get_font_en(11, bold=True), fill=ACCENT_CYAN)
+    draw_corner_brackets(draw, wave_x1, wave_y1, wave_x2, wave_y2, ACCENT_CYAN, length=16, width=2)
+    mid_wave_x = (wave_x1 + wave_x2) // 2
+    draw.line([mid_wave_x, wave_y1, mid_wave_x, wave_y2], fill=CARD_BORDER, width=1)
+    draw.text((wave_x1 + 25, wave_y1 + 8), "FREQUENCY EQUALIZER SPECTRUM", font=get_font_en(11, bold=True), fill=ACCENT_CYAN)
+    draw.text((mid_wave_x + 25, wave_y1 + 8), "AUDIO PEAK OSCILLOSCOPE", font=get_font_en(11, bold=True), fill=ACCENT_GOLD)
 
     # Footer
     draw.rectangle([0, HEIGHT_LANDSCAPE - 45, WIDTH_LANDSCAPE, HEIGHT_LANDSCAPE], fill=(15, 23, 42))
@@ -186,9 +257,7 @@ def create_scene_frame(scene, scene_idx, total_scenes, title, subtitle, out_png)
     draw.text((WIDTH_LANDSCAPE - 360, HEIGHT_LANDSCAPE - 30), footer_right, font=get_font_en(11, bold=True), fill=ACCENT_GOLD)
 
     im.save(out_png)
-    even_w = ((wave_x2 - wave_x1 - 40) // 2) * 2
-    even_h = ((wave_y2 - wave_y1 - 44) // 2) * 2
-    return wave_x1 + 20, wave_y1 + 32, even_w, even_h
+    return wave_x1, wave_y1, wave_x2, wave_y2
 
 def generate_script(api_key, custom_topic=None, story_context=None):
     story_context = story_context or {}
@@ -223,14 +292,18 @@ def generate_script(api_key, custom_topic=None, story_context=None):
         prompt = f"""You are the Chief Technical Architect and candid engineering chronicler for "तकनीकी हकीकत और 2026 बेंचमार्क: सवाल-जवाब" (Technical Reality & 2026 Benchmark Q&A) by Aman Tech Solutions (Proprietor: Aman Kumar, anshuka.in).
 Ethos:
 - Raw, transparent engineering honesty in Question-and-Answer (सवाल-जवाब / Q&A) format.
+- GROUNDED HONESTY (कड़वी हकीकत):
+  * NEVER claim "शून्य थर्ड-पार्टी सब्सक्रिप्शन" or "हमारा अपना प्राइवेट क्लाउड"।
+  * स्पष्ट और ईमानदार सच: हम एक स्वतंत्र व्यक्तिगत डेवलपर (अमन कुमार) हैं जो Google Gemini फ्री डेवलपर API, Cloudflare Workers फ्री/सब्सिडाइज्ड टियर और Render फ्री-टियर डॉकर कंटेनर पर यह पूरी पाइपलाइन चला रहे हैं। किसी भी प्लेटफॉर्म पर लॉगिन करना और उनके कोटा का उपयोग करना भी एक प्रकार का सब्सक्रिप्शन है। इस सच को बिना किसी दिखावे के स्वीकार करना ही हमारी वास्तविक प्रामाणिकता है।
+  * संस्थापक की लाइव समीक्षा और चैट विमर्श: संस्थापक अमन कुमार ने पिछले ब्रॉडकास्ट की समीक्षा कर तुरंत फटकार लगाई कि 'शून्य थर्ड-पार्टी' कहना भ्रामक है, वीडियो में टेक्स्ट टूटा-टूटा दिख रहा था और वेवफॉर्म अदृश्य थी। आज का सिस्टम तुरंत इस आलोचना को कोड में सुधारकर लाइव स्वीकार कर रहा है।
 - Candidly address:
-  1. हम क्या कर रहे हैं? (24/7 Render Cloud Runner Docker engine, FFmpeg procedural visual cards with audio waveforms & scrolling ticker, Gemini 2.5 neural TTS, Cloudflare D1 edge database orchestration, direct Meta Graph v21.0 & YouTube v3 broadcasting).
+  1. हम क्या कर रहे हैं? (Render 24/7 Cloud Runner Docker engine, FFmpeg dual dynamic visualizers - equalizer bars & peak oscilloscope, animated ASS subtitles, Gemini 2.5 neural TTS, Cloudflare D1 edge database orchestration, direct Meta Graph v21.0 & YouTube v3 broadcasting).
   2. कैसे स्टार्ट किया? (From first commit f861b55, 512MB RAM OOM crashes, debugging FFmpeg filters, solving audio drift, building edge D1 schemas).
   3. कितनी प्रगति कर रहे हैं? (50+ background services, 100+ tests, 12ms edge cold start, zero server-crash resilience).
   4. 2026 के आधुनिक टेक जगत से बराबरी (The 2026 Benchmark Check):
-     - हम क्या सही कर रहे हैं? (Zero SaaS lock-in, 100% data ownership, 15ms WebRTC latency, zero-cost edge scale).
-     - हम क्या गलत कर रहे हैं या कहाँ पिछड़ रहे हैं? (Mobile CGNAT traversal hurdles, procedural PIL/FFmpeg graphics vs modern generative 3D video).
-     - क्या हम पिछड़ी हुई बातें कर रहे हैं? (Brutally candid self-critique: retiring legacy HTTP polling, moving to full SSE/WebSockets and event-driven architecture).
+     - हम क्या सही कर रहे हैं? (स्वतंत्र डेवलपर की सूझबूझ, ₹0 अतिरिक्त लाइसेंस शुल्क, 15ms WebRTC लेटेंसी)।
+     - हम क्या गलत कर रहे हैं या कहाँ पिछड़ रहे हैं? (मोबाइल CGNAT ट्रैवर्सल की बाधाएं, 3D जनरेटिव AI वीडियो की जगह 2D प्रोसीजरल ग्राफिक्स)।
+     - क्या हम पिछड़ी हुई बातें कर रहे हैं? (पारंपरिक स्लो पोलिंग को खत्म कर इवेंट-ड्रिवन और SSE/WebSockets आर्किटेक्चर)।
 - Tone: Thoughtful, technical, authoritative Hindi monologue (Devanagari script) suitable for spoken TTS audio.
 - Focus Topic: {custom_topic or "ब्रॉडकास्ट वास्तुकला Q&A: 24/7 स्वायत्त इंजन और 2026 बेंचमार्क"}
 {f"- Chat/Dev Context: {chat_summary}" if chat_summary else ""}
@@ -342,6 +415,9 @@ Output STRICT JSON:
 Ethos:
 - Real-time build-in-public evening reflection: what we actually worked on TODAY.
 - Honest, humble, active development mode: Ideas brainstormed in chat, features requested today, bugs debugged, and what we learned today.
+- RECURSIVE FOUNDER FEEDBACK & TRUTH:
+  * Openly embrace the founder's review: Aman Kumar reviewed today's live test broadcast, noting that claiming 'zero third-party subscription' is untrue since we rely on free/developer quotas of Google Gemini, Cloudflare, and Render. Calling a spade a spade is our actual strength.
+  * Visual audit: Directly mention fixing broken Devanagari text using RAQM engine, reviving invisible waveforms with dual dynamic equalizer bars and oscilloscopes, and adding kinetic subtitle animations.
 - Narrative harmony: Connects today's work to the foundational platform roots.
 - Tone: Inspiring, conversational, authentic Hindi spoken voice (NOT literal, NO superficial victory claims, genuine progress).
 
@@ -776,16 +852,15 @@ def execute_broadcast_pipeline(req: TriggerRequest):
     with wave.open(audio_path, "r") as wf:
         total_duration = wf.getnframes() / float(wf.getframerate())
 
-    # 3. Procedural Multi-Scene Graphics + Animated Waveform
+    # 3. Procedural Multi-Scene Graphics + Animated Waveform & Equalizer
     scenes = script.get("scenes", [])
     num_scenes = max(1, len(scenes))
     scene_duration = total_duration / num_scenes
 
     scene_images = []
-    wx, wy, ww, wh = 100, 537, 1080, 110
     for idx, sc in enumerate(scenes):
         sc_png = os.path.join(tmp_dir, f"{broadcast_id}_scene_{idx}.png")
-        wx, wy, ww, wh = create_scene_frame(sc, idx, num_scenes, script["title"], script.get("subtitle", ""), sc_png)
+        create_scene_frame(sc, idx, num_scenes, script["title"], script.get("subtitle", ""), sc_png)
         scene_images.append(sc_png)
 
     # Write concat playlist for sequential visual scene transitions
@@ -797,26 +872,35 @@ def execute_broadcast_pipeline(req: TriggerRequest):
             f.write(f"duration {dur:.3f}\n")
         f.write(f"file '{scene_images[-1]}'\n")
 
-    ticker_font = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
+    # Generate ASS subtitles for animated narration text
+    ass_path = os.path.join(tmp_dir, f"{broadcast_id}.ass")
+    fonts_dir = os.path.join(os.path.dirname(__file__), "fonts")
+    if not os.path.exists(fonts_dir):
+        fonts_dir = "/usr/share/fonts/truetype/noto"
+    generate_ass_subtitles(script["dialogue"], total_duration, ass_path, "Noto Sans Devanagari")
+
+    ticker_font = os.path.join(fonts_dir, "NotoSansDevanagari-Bold.ttf")
     if not os.path.exists(ticker_font):
         ticker_font = "/usr/share/fonts/truetype/noto/NotoSansDevanagari-Bold.ttf"
+    if not os.path.exists(ticker_font):
+        ticker_font = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
 
     filter_complex_str = (
-        f"[1:a]showwaves=s={ww}x{wh}:mode=cline:colors=0x38bdf8|0x10b981:rate=25[fg];"
-        f"[0:v][fg]overlay=x={wx}:y={wy}:shortest=1"
+        f"[0:v]fps=25[bg];"
+        f"[1:a]showfreqs=s=530x95:mode=bar:ascale=log:fscale=log:colors=0x38bdf8|0x10b981|0xf59e0b[spec];"
+        f"[1:a]showwaves=s=530x95:mode=p2p:scale=sqrt:draw=full:colors=0x38bdf8|0x06b6d4:rate=25[waves];"
+        f"[bg][spec]overlay=105:540[v1];"
+        f"[v1][waves]overlay=665:540[v2];"
+        f"[v2]drawbox=x=80:y='80+mod(t*140, 390)':w=1120:h=2:color=0x38bdf8@0.4:t=fill[v3];"
+        f"[v3]drawbox=x=1170:y=90:w=14:h=14:color=0x10b981@0.8:t=2[v4];"
+        f"[v4]subtitles='{ass_path}':fontsdir='{fonts_dir}'[v5];"
+        f"[v5]drawtext=fontfile='{ticker_font}':text='● LIVE ON-AIR':fontsize=12:fontcolor=0xef4444:enable='lt(mod(t,1),0.65)':x={WIDTH_LANDSCAPE-220}:y=18[v6];"
+        f"[v6]drawtext=fontfile='{ticker_font}':text='⚡ AMAN TECH SOLUTIONS • REAL-TIME DEV CHRONICLES • 100% BUILDING IN PUBLIC • anshuka.in':fontsize=12:fontcolor=0x94a3b8:x='w-t*115':y={HEIGHT_LANDSCAPE-26}[outv]"
     )
-    if os.path.exists(ticker_font):
-        filter_complex_str += (
-            f"[v1];"
-            f"[v1]drawtext=fontfile='{ticker_font}':text='● ON-AIR':fontsize=12:fontcolor=0xef4444:enable='lt(mod(t,1),0.6)':x={WIDTH_LANDSCAPE-220}:y=18[v2];"
-            f"[v2]drawtext=fontfile='{ticker_font}':text='⚡ ATS BUILD LOG • REAL-TIME PIPELINE • anshuka.in • SOVEREIGN TECH':fontsize=12:fontcolor=0x94a3b8:x='w-t*110':y={HEIGHT_LANDSCAPE-26}[outv]"
-        )
-    else:
-        filter_complex_str += "[outv]"
 
     ffmpeg_cmd = [
         "ffmpeg", "-y",
-        "-threads", "1",
+        "-threads", "2",
         "-f", "concat",
         "-safe", "0",
         "-i", concat_txt,
@@ -825,8 +909,6 @@ def execute_broadcast_pipeline(req: TriggerRequest):
         "-map", "[outv]",
         "-map", "1:a",
         "-c:v", "libx264",
-        "-threads", "1",
-        "-tune", "stillimage",
         "-preset", "ultrafast",
         "-c:a", "aac",
         "-b:a", "128k",

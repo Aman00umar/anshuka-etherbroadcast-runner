@@ -6,6 +6,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     fonts-noto-core \
     fonts-noto-extra \
     fonts-dejavu-core \
+    libraqm0 \
+    libharfbuzz0b \
+    libfribidi0 \
+    libass9 \
     ca-certificates \
     curl \
     && rm -rf /var/lib/apt/lists/*
