@@ -1055,6 +1055,7 @@ async def gemini_live_voice_agent_ws(websocket: WebSocket):
 
         async with client.aio.live.connect(model="gemini-3.8-live", config=config) as session:
             print(f"[GeminiLive Cloud Runner] Live session established with voice {voice_name}")
+            await websocket.send_text(json.dumps({"type": "session_established", "voiceName": voice_name}))
 
             # Send immediate spoken greeting prompt so Gemini Live speaks aloud on connection
             greeting_prompt = (
@@ -1073,16 +1074,20 @@ async def gemini_live_voice_agent_ws(websocket: WebSocket):
                         if response.server_content:
                             sc = response.server_content
                             if sc.interrupted:
-                                await websocket.send_json({"type": "interrupted"})
+                                await websocket.send_text(json.dumps({"type": "interrupted"}))
                             if sc.model_turn:
                                 for part in sc.model_turn.parts:
                                     if part.inline_data and part.inline_data.data:
-                                        b64_audio = base64.b64encode(part.inline_data.data).decode("utf-8")
-                                        await websocket.send_json({"type": "audio", "audio": b64_audio})
+                                        raw_d = part.inline_data.data
+                                        if isinstance(raw_d, bytes):
+                                            b64_audio = base64.b64encode(raw_d).decode("utf-8")
+                                        else:
+                                            b64_audio = str(raw_d)
+                                        await websocket.send_text(json.dumps({"type": "audio", "audio": b64_audio}))
                                     if part.text:
-                                        await websocket.send_json({"type": "output_transcript", "text": part.text})
+                                        await websocket.send_text(json.dumps({"type": "output_transcript", "text": part.text}))
                             if sc.turn_complete:
-                                await websocket.send_json({"type": "turnComplete"})
+                                await websocket.send_text(json.dumps({"type": "turnComplete"}))
                 except Exception as down_err:
                     print(f"[GeminiLive Downstream Error]: {down_err}")
 
@@ -1122,9 +1127,12 @@ async def gemini_live_voice_agent_ws(websocket: WebSocket):
     except (WebSocketDisconnect, asyncio.CancelledError):
         print("[GeminiLive Cloud Runner] WebSocket client disconnected cleanly.")
     except Exception as e:
-        print(f"[GeminiLive Cloud Runner Error]: {e}")
+        import traceback
+        err_msg = f"{type(e).__name__}: {str(e)}"
+        print(f"[GeminiLive Cloud Runner Error]: {traceback.format_exc()}")
         try:
-            await websocket.close(code=1011, reason=str(e))
+            await websocket.send_text(json.dumps({"type": "error", "message": err_msg}))
+            await websocket.close(code=1011, reason=err_msg[:120])
         except Exception:
             pass
 
