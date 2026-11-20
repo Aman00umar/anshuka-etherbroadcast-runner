@@ -199,8 +199,16 @@ def generate_script(api_key, custom_topic=None, story_context=None):
 
     is_genesis = story_type == "genesis_archive"
     is_daily_log = story_type == "daily_log"
+    is_qa_benchmark = (
+        story_type == "tech_benchmark_qa" or
+        "Q&A" in (custom_topic or "") or
+        "सवाल" in (custom_topic or "") or
+        "बेंचमार्क" in (custom_topic or "") or
+        "वास्तुकला" in (custom_topic or "") or
+        "बराबरी" in (custom_topic or "")
+    )
     is_dev_journey = (
-        is_genesis or is_daily_log or
+        is_genesis or is_daily_log or is_qa_benchmark or
         story_type == "dev_journey" or
         not custom_topic or
         "Dev" in (custom_topic or "") or
@@ -209,7 +217,68 @@ def generate_script(api_key, custom_topic=None, story_context=None):
     )
     is_wealth_of_truth = "सच्चाई की वेल्थ" in (custom_topic or "") or story_type == "wealth_of_truth"
 
-    if is_genesis:
+    if is_qa_benchmark:
+        prompt = f"""You are the Chief Technical Architect and candid engineering chronicler for "तकनीकी हकीकत और 2026 बेंचमार्क: सवाल-जवाब" (Technical Reality & 2026 Benchmark Q&A) by Aman Tech Solutions (Proprietor: Aman Kumar, anshuka.in).
+Ethos:
+- Raw, transparent engineering honesty in Question-and-Answer (सवाल-जवाब / Q&A) format.
+- Candidly address:
+  1. हम क्या कर रहे हैं? (24/7 Render Cloud Runner Docker engine, FFmpeg procedural visual cards with audio waveforms & scrolling ticker, Gemini 2.5 neural TTS, Cloudflare D1 edge database orchestration, direct Meta Graph v21.0 & YouTube v3 broadcasting).
+  2. कैसे स्टार्ट किया? (From first commit f861b55, 512MB RAM OOM crashes, debugging FFmpeg filters, solving audio drift, building edge D1 schemas).
+  3. कितनी प्रगति कर रहे हैं? (50+ background services, 100+ tests, 12ms edge cold start, zero server-crash resilience).
+  4. 2026 के आधुनिक टेक जगत से बराबरी (The 2026 Benchmark Check):
+     - हम क्या सही कर रहे हैं? (Zero SaaS lock-in, 100% data ownership, 15ms WebRTC latency, zero-cost edge scale).
+     - हम क्या गलत कर रहे हैं या कहाँ पिछड़ रहे हैं? (Mobile CGNAT traversal hurdles, procedural PIL/FFmpeg graphics vs modern generative 3D video).
+     - क्या हम पिछड़ी हुई बातें कर रहे हैं? (Brutally candid self-critique: retiring legacy HTTP polling, moving to full SSE/WebSockets and event-driven architecture).
+- Tone: Thoughtful, technical, authoritative Hindi monologue (Devanagari script) suitable for spoken TTS audio.
+- Focus Topic: {custom_topic or "ब्रॉडकास्ट वास्तुकला Q&A: 24/7 स्वायत्त इंजन और 2026 बेंचमार्क"}
+{f"- Chat/Dev Context: {chat_summary}" if chat_summary else ""}
+{f"- Git Commits: {', '.join(git_commits[:5]) if isinstance(git_commits, list) else git_commits}" if git_commits else ""}
+{f"- Issues Faced: {issues_faced}" if issues_faced else ""}
+{f"- Milestones: {result_milestone}" if result_milestone else ""}
+
+Duration: 40 to 55 seconds (approx. 65-90 words).
+
+Structure into 3 visual scenes:
+1. Scene 1 (कड़ा सवाल): The provocative technical question & reality check.
+2. Scene 2 (तकनीकी हकीकत): Grounded engineering architecture & real numbers.
+3. Scene 3 (2026 बराबरी व आगे की दिशा): What we got right vs what lags, and future roadmap.
+
+Output STRICT JSON:
+{{
+  "title": "Title with Q&A (e.g. 'ब्रॉडकास्ट वास्तुकला Q&A: 24/7 स्वायत्त इंजन का सच')",
+  "subtitle": "अमन टेक सॉल्यूशंस • 2026 टेक बेंचमार्क Q&A",
+  "dialogue": "Continuous spoken monologue in authentic Hindi Devanagari script for TTS voice",
+  "summary": "1-sentence summary of this architectural Q&A",
+  "tags": ["AmanKumar", "TechBenchmarkQA", "BroadcastArchitecture", "BuildingInPublic", "ATSPlatform"],
+  "socialCaption": "Engaging Q&A caption with technical details, 2026 benchmark comparison, and roadmap hints for YouTube/Facebook/Instagram",
+  "scenes": [
+    {{
+      "brand": "2026 टेक बेंचमार्क",
+      "subBrand": "HARD QUESTION",
+      "tag": "भाग १: कड़ा सवाल",
+      "heading": "Catchy Scene 1 Title in Hindi (max 5-7 words)",
+      "points": ["Short punchy highlight 1", "Short punchy highlight 2"],
+      "accent": "gold"
+    }},
+    {{
+      "brand": "2026 टेक बेंचमार्क",
+      "subBrand": "ENGINEERING TRUTH",
+      "tag": "भाग २: तकनीकी हकीकत",
+      "heading": "Catchy Scene 2 Title in Hindi (max 5-7 words)",
+      "points": ["Short punchy highlight 1", "Short punchy highlight 2"],
+      "accent": "cyan"
+    }},
+    {{
+      "brand": "2026 टेक बेंचमार्क",
+      "subBrand": "BENCHMARK & ROADMAP",
+      "tag": "भाग ३: 2026 बराबरी व आगे की दिशा",
+      "heading": "Catchy Scene 3 Title in Hindi (max 5-7 words)",
+      "points": ["Short punchy highlight 1", "Short punchy highlight 2"],
+      "accent": "emerald"
+    }}
+  ]
+}}"""
+    elif is_genesis:
         prompt = f"""You are the lead chronicler for "नींव से निर्माण तक: द एवोल्यूशन सीरीज" (The Genesis Archive) by Aman Tech Solutions (Proprietor: Aman Kumar, anshuka.in).
 Ethos:
 - Serialized architectural retrospective from day 1 to present stage.
