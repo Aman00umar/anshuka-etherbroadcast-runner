@@ -29,8 +29,9 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from typing import List, Optional, Dict, Any
 from PIL import Image, ImageDraw, ImageFont
+from audio_effects import build_mastered_broadcast_audio
 
-app = FastAPI(title="Anshuka EtherBroadcast Multi-Scene Cloud Runner", version="2.5.0")
+app = FastAPI(title="Anshuka EtherBroadcast Multi-Scene Cloud Runner", version="2.6.0")
 
 WIDTH_LANDSCAPE = 1280
 HEIGHT_LANDSCAPE = 720
@@ -136,7 +137,7 @@ def generate_ass_subtitles(dialogue: str, total_duration: float, ass_path: str, 
         "",
         "[V4+ Styles]",
         "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding",
-        f"Style: Default,{font_name},22,&H00FFFFFF,&H000000FF,&H00000000,&H80000000,1,0,0,0,100,100,0,0,1,2,1,2,60,60,250,1",
+        f"Style: Default,{font_name},19,&H00FFFFFF,&H000000FF,&H00000000,&H80000000,1,0,0,0,100,100,0,0,1,2,0,2,95,95,225,1",
         "",
         "[Events]",
         "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text"
@@ -150,7 +151,7 @@ def generate_ass_subtitles(dialogue: str, total_duration: float, ass_path: str, 
         start_str = format_ass_time(current_time)
         end_str = format_ass_time(current_time + dur)
         clean_s = s.replace("\n", " ").strip()
-        ass_lines.append(f"Dialogue: 0,{start_str},{end_str},Default,,0,0,0,,{{\\fad(200,200)}}{clean_s}")
+        ass_lines.append(f"Dialogue: 0,{start_str},{end_str},Default,,0,0,0,,{{\\fad(150,150)}}{clean_s}")
         current_time += dur
         if current_time >= total_duration:
             break
@@ -183,65 +184,70 @@ def create_scene_frame(scene, scene_idx, total_scenes, title, subtitle, out_png)
     accent_key = str(scene.get("accent", "")).lower()
     accent_color = ACCENT_PALETTE.get(accent_key, ACCENT_CYAN)
 
-    # Top Header Bar
-    draw.rectangle([0, 0, WIDTH_LANDSCAPE, 56], fill=(15, 23, 42))
-    draw.line([0, 56, WIDTH_LANDSCAPE, 56], fill=CARD_BORDER, width=2)
+    # Top Header Bar (0 to 52)
+    draw.rectangle([0, 0, WIDTH_LANDSCAPE, 52], fill=(15, 23, 42))
+    draw.line([0, 52, WIDTH_LANDSCAPE, 52], fill=CARD_BORDER, width=2)
 
-    font_brand = get_font_hi(20, bold=True)
+    font_brand = get_font_hi(19, bold=True)
     font_sub_brand = get_font_en(13, bold=True)
     brand_text = scene.get("brand", "सृजन की दास्तान")
     sub_brand_text = scene.get("subBrand", "BUILD IN PUBLIC")
-    draw.text((40, 16), brand_text, font=font_brand, fill=ACCENT_GOLD)
-    draw.text((220, 19), f"|   {sub_brand_text}  •  SCENE {scene_idx + 1}/{total_scenes}", font=font_sub_brand, fill=ACCENT_CYAN)
+    draw.text((40, 14), brand_text, font=font_brand, fill=ACCENT_GOLD)
+    draw.text((230, 17), f"|   {sub_brand_text}  •  SCENE {scene_idx + 1}/{total_scenes}", font=font_sub_brand, fill=ACCENT_CYAN)
 
     # Live Badge with scene accent
-    draw.rectangle([WIDTH_LANDSCAPE - 270, 12, WIDTH_LANDSCAPE - 30, 44], fill=(24, 32, 47), outline=CARD_BORDER)
-    draw.ellipse([WIDTH_LANDSCAPE - 258, 24, WIDTH_LANDSCAPE - 248, 34], fill=accent_color)
-    draw.text((WIDTH_LANDSCAPE - 238, 18), "ON-AIR  |  ATS PLATFORM", font=get_font_en(12, bold=True), fill=TEXT_WHITE)
+    draw.rectangle([WIDTH_LANDSCAPE - 270, 10, WIDTH_LANDSCAPE - 30, 42], fill=(24, 32, 47), outline=CARD_BORDER)
+    draw.ellipse([WIDTH_LANDSCAPE - 258, 22, WIDTH_LANDSCAPE - 248, 32], fill=accent_color)
+    draw.text((WIDTH_LANDSCAPE - 238, 16), "ON-AIR  |  ATS PLATFORM", font=get_font_en(12, bold=True), fill=TEXT_WHITE)
 
-    # Hero Content Card
-    card_x1, card_y1, card_x2, card_y2 = 80, 80, WIDTH_LANDSCAPE - 80, 480
+    # 1. Hero Content Card (70 to 415 - Height 345)
+    card_x1, card_y1, card_x2, card_y2 = 80, 70, WIDTH_LANDSCAPE - 80, 415
     draw.rectangle([card_x1, card_y1, card_x2, card_y2], fill=CARD_BG, outline=CARD_BORDER, width=2)
     draw.line([card_x1, card_y1, card_x2, card_y1], fill=accent_color, width=4)
-    # Tech Corner Brackets for High-Tech HUD Styling
-    draw_corner_brackets(draw, card_x1, card_y1, card_x2, card_y2, accent_color, length=24, width=3)
+    draw_corner_brackets(draw, card_x1, card_y1, card_x2, card_y2, accent_color, length=20, width=3)
 
     # Category Pill
     pill_tag = scene.get("tag", f"भाग {scene_idx + 1}")
-    draw.rectangle([card_x1 + 30, card_y1 + 25, card_x1 + 360, card_y1 + 55], fill=(30, 41, 59), outline=accent_color)
-    draw.text((card_x1 + 42, card_y1 + 30), f"★ {pill_tag}", font=get_font_hi(13, bold=True), fill=accent_color)
+    draw.rectangle([card_x1 + 25, card_y1 + 18, card_x1 + 340, card_y1 + 46], fill=(30, 41, 59), outline=accent_color)
+    draw.text((card_x1 + 36, card_y1 + 22), f"★ {pill_tag}", font=get_font_hi(13, bold=True), fill=accent_color)
 
-    # Scene Heading (Devanagari with proper RAQM shaping)
-    font_heading = get_font_hi(26, bold=True)
-    h_lines = wrap_text(scene.get("heading", title), font_heading, card_x2 - card_x1 - 60, draw)
-    ty = card_y1 + 75
+    # Scene Heading
+    font_heading = get_font_hi(24, bold=True)
+    h_lines = wrap_text(scene.get("heading", title), font_heading, card_x2 - card_x1 - 50, draw)
+    ty = card_y1 + 58
     for hl in h_lines[:2]:
-        draw.text((card_x1 + 30, ty), hl, font=font_heading, fill=TEXT_WHITE)
-        ty += 36
+        draw.text((card_x1 + 25, ty), hl, font=font_heading, fill=TEXT_WHITE)
+        ty += 32
 
     # Series Subtitle
     sub_text = f"{title}  •  {subtitle}" if subtitle else title
-    draw.text((card_x1 + 30, ty + 6), sub_text, font=get_font_hi(15), fill=ACCENT_CYAN)
-    ty += 30
+    draw.text((card_x1 + 25, ty + 2), sub_text, font=get_font_hi(14), fill=ACCENT_CYAN)
+    ty += 22
 
-    draw.line([card_x1 + 30, ty + 10, card_x2 - 30, ty + 10], fill=CARD_BORDER, width=1)
-    ty += 24
+    draw.line([card_x1 + 25, ty + 6, card_x2 - 25, ty + 6], fill=CARD_BORDER, width=1)
+    ty += 16
 
-    # Bullet Points with styled colored bullets
+    # Bullet Points (Max 2 with high readability & spacing)
     points = scene.get("points", [])
-    font_pt = get_font_hi(18)
-    for pt in points[:3]:
-        draw.ellipse([card_x1 + 35, ty + 6, card_x1 + 45, ty + 16], fill=accent_color)
-        pt_lines = wrap_text(pt, font_pt, card_x2 - card_x1 - 90, draw)
-        for pl in pt_lines:
-            draw.text((card_x1 + 55, ty), pl, font=font_pt, fill=TEXT_MUTED)
-            ty += 26
-        ty += 8
+    font_pt = get_font_hi(16)
+    for pt in points[:2]:
+        draw.ellipse([card_x1 + 30, ty + 5, card_x1 + 38, ty + 13], fill=accent_color)
+        pt_lines = wrap_text(pt, font_pt, card_x2 - card_x1 - 70, draw)
+        for pl in pt_lines[:2]:
+            draw.text((card_x1 + 48, ty), pl, font=font_pt, fill=TEXT_MUTED)
+            ty += 23
+        ty += 6
 
-    draw.text((card_x1 + 35, card_y2 - 35), "वक्ता: अमन कुमार (Aman Kumar) — संस्थापक, Aman Tech Solutions", font=get_font_hi(13, bold=True), fill=ACCENT_GOLD)
+    draw.text((card_x1 + 25, card_y2 - 26), "वक्ता: अमन कुमार (Aman Kumar) — संस्थापक, Aman Tech Solutions", font=get_font_hi(12, bold=True), fill=ACCENT_GOLD)
 
-    # Dual Visualizer Container Box (Split Equalizer & Oscilloscope)
-    wave_x1, wave_y1, wave_x2, wave_y2 = 80, 505, WIDTH_LANDSCAPE - 80, 660
+    # 2. Dedicated Live Subtitle & Transcript Dock (425 to 505 - Height 80)
+    sub_x1, sub_y1, sub_x2, sub_y2 = 80, 425, WIDTH_LANDSCAPE - 80, 505
+    draw.rectangle([sub_x1, sub_y1, sub_x2, sub_y2], fill=(15, 23, 42), outline=(56, 189, 248), width=2)
+    draw_corner_brackets(draw, sub_x1, sub_y1, sub_x2, sub_y2, (56, 189, 248), length=14, width=2)
+    draw.text((sub_x1 + 20, sub_y1 + 6), "● लाइव ऑडियो उद्घोषणा  |  LIVE NEURAL SPEECH TRANSCRIPT", font=get_font_hi(11, bold=True), fill=ACCENT_CYAN)
+
+    # 3. Dual Visualizer Container Box (Split Equalizer & Oscilloscope) (515 to 665 - Height 150)
+    wave_x1, wave_y1, wave_x2, wave_y2 = 80, 515, WIDTH_LANDSCAPE - 80, 665
     draw.rectangle([wave_x1, wave_y1, wave_x2, wave_y2], fill=(13, 19, 33), outline=CARD_BORDER, width=2)
     draw_corner_brackets(draw, wave_x1, wave_y1, wave_x2, wave_y2, ACCENT_CYAN, length=16, width=2)
     mid_wave_x = (wave_x1 + wave_x2) // 2
@@ -249,7 +255,7 @@ def create_scene_frame(scene, scene_idx, total_scenes, title, subtitle, out_png)
     draw.text((wave_x1 + 25, wave_y1 + 8), "FREQUENCY EQUALIZER SPECTRUM", font=get_font_en(11, bold=True), fill=ACCENT_CYAN)
     draw.text((mid_wave_x + 25, wave_y1 + 8), "AUDIO PEAK OSCILLOSCOPE", font=get_font_en(11, bold=True), fill=ACCENT_GOLD)
 
-    # Footer
+    # 4. Footer Bar (675 to 720)
     draw.rectangle([0, HEIGHT_LANDSCAPE - 45, WIDTH_LANDSCAPE, HEIGHT_LANDSCAPE], fill=(15, 23, 42))
     draw.line([0, HEIGHT_LANDSCAPE - 45, WIDTH_LANDSCAPE, HEIGHT_LANDSCAPE - 45], fill=CARD_BORDER, width=1)
     draw.text((30, HEIGHT_LANDSCAPE - 30), "मंच: anshuka.in   •   Aman Tech Solutions (Proprietor: Aman Kumar)", font=get_font_hi(12), fill=TEXT_MUTED)
@@ -873,7 +879,12 @@ def execute_broadcast_pipeline(req: TriggerRequest):
             f.write(f"duration {dur:.3f}\n")
         f.write(f"file '{scene_images[-1]}'\n")
 
-    # Generate ASS subtitles for animated narration text
+    # 2b. Studio Audio Mastering: Intro chime, scene transition whooshes, ambient pad & broadcast compression
+    scene_durs = [scene_duration if idx < num_scenes - 1 else max(1.0, total_duration - (num_scenes - 1) * scene_duration) for idx in range(num_scenes)]
+    mastered_audio_path = os.path.join(tmp_dir, f"{broadcast_id}_mastered.wav")
+    final_audio_path = build_mastered_broadcast_audio(audio_path, total_duration, scene_durs, mastered_audio_path)
+
+    # Generate ASS subtitles for animated narration text (rendered inside dedicated Subtitle Dock)
     ass_path = os.path.join(tmp_dir, f"{broadcast_id}.ass")
     fonts_dir = os.path.join(os.path.dirname(__file__), "fonts")
     if not os.path.exists(fonts_dir):
@@ -888,14 +899,14 @@ def execute_broadcast_pipeline(req: TriggerRequest):
 
     filter_complex_str = (
         f"[0:v]fps=25[bg];"
-        f"[1:a]showfreqs=s=530x95:mode=bar:ascale=log:fscale=log:colors=0x38bdf8|0x10b981|0xf59e0b[spec];"
-        f"[1:a]showwaves=s=530x95:mode=p2p:scale=sqrt:draw=full:colors=0x38bdf8|0x06b6d4:rate=25[waves];"
-        f"[bg][spec]overlay=105:540[v1];"
-        f"[v1][waves]overlay=665:540[v2];"
-        f"[v2]drawbox=x=80:y='80+mod(t*140, 390)':w=1120:h=2:color=0x38bdf8@0.4:t=fill[v3];"
-        f"[v3]drawbox=x=1170:y=90:w=14:h=14:color=0x10b981@0.8:t=2[v4];"
+        f"[1:a]showfreqs=s=530x100:mode=bar:ascale=log:fscale=log:colors=0x38bdf8|0x10b981|0xf59e0b[spec];"
+        f"[1:a]showwaves=s=530x100:mode=p2p:scale=sqrt:draw=full:colors=0x38bdf8|0x06b6d4:rate=25[waves];"
+        f"[bg][spec]overlay=105:550[v1];"
+        f"[v1][waves]overlay=665:550[v2];"
+        f"[v2]drawbox=x=80:y='70+mod(t*120, 340)':w=1120:h=2:color=0x38bdf8@0.4:t=fill[v3];"
+        f"[v3]drawbox=x=1170:y=85:w=14:h=14:color=0x10b981@0.8:t=2[v4];"
         f"[v4]subtitles='{ass_path}':fontsdir='{fonts_dir}'[v5];"
-        f"[v5]drawtext=fontfile='{ticker_font}':text='● LIVE ON-AIR':fontsize=12:fontcolor=0xef4444:enable='lt(mod(t,1),0.65)':x={WIDTH_LANDSCAPE-220}:y=18[v6];"
+        f"[v5]drawtext=fontfile='{ticker_font}':text='● LIVE ON-AIR':fontsize=12:fontcolor=0xef4444:enable='lt(mod(t,1),0.65)':x={WIDTH_LANDSCAPE-220}:y=16[v6];"
         f"[v6]drawtext=fontfile='{ticker_font}':text='⚡ AMAN TECH SOLUTIONS • REAL-TIME DEV CHRONICLES • 100% BUILDING IN PUBLIC • anshuka.in':fontsize=12:fontcolor=0x94a3b8:x='w-t*115':y={HEIGHT_LANDSCAPE-26}[outv]"
     )
 
@@ -905,7 +916,7 @@ def execute_broadcast_pipeline(req: TriggerRequest):
         "-f", "concat",
         "-safe", "0",
         "-i", concat_txt,
-        "-i", audio_path,
+        "-i", final_audio_path,
         "-filter_complex", filter_complex_str,
         "-map", "[outv]",
         "-map", "1:a",
