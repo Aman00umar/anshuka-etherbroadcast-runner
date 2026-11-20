@@ -14,6 +14,7 @@ Aman Tech Solutions (ATS Platform) & EtherComm Sovereign Content Engine
 """
 
 import os
+import gc
 import json
 import time
 import base64
@@ -21,6 +22,7 @@ import wave
 import subprocess
 import requests
 import asyncio
+import threading
 from datetime import datetime, timezone
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from google import genai
@@ -32,6 +34,9 @@ from PIL import Image, ImageDraw, ImageFont
 from audio_effects import build_mastered_broadcast_audio
 
 app = FastAPI(title="Anshuka EtherBroadcast Multi-Scene Cloud Runner", version="2.6.0")
+
+# Concurrency lock to prevent multiple FFmpeg rendering pipelines from running simultaneously on 512MB RAM
+PIPELINE_LOCK = threading.Lock()
 
 WIDTH_LANDSCAPE = 1280
 HEIGHT_LANDSCAPE = 720
@@ -807,240 +812,292 @@ def get_status():
     }
 
 def execute_broadcast_pipeline(req: TriggerRequest):
+    if not PIPELINE_LOCK.acquire(blocking=False):
+        print("[EtherBroadcast] ⚠️ Concurrency limit: another broadcast pipeline is currently active. Rejecting concurrent run to protect 512MB RAM.")
+        raise HTTPException(status_code=429, detail="Broadcast rendering in progress. Please retry after current render completes.")
+
     api_key = os.environ.get("GEMINI_API_KEY")
     if not api_key:
+        try:
+            PIPELINE_LOCK.release()
+        except RuntimeError:
+            pass
         raise HTTPException(status_code=500, detail="GEMINI_API_KEY is not configured")
 
     broadcast_id = f"eb_cloud_{int(time.time())}"
     tmp_dir = "/tmp"
     audio_path = os.path.join(tmp_dir, f"{broadcast_id}.wav")
-    mp4_path = os.path.join(tmp_dir, f"{broadcast_id}.mp4")
-
-    # 1. Multi-Scene Script Generation or Use Pre-Generated Script
-    if req.providedScript and isinstance(req.providedScript, dict) and "dialogue" in req.providedScript:
-        script = req.providedScript
-        # Ensure scenes exist
-        if "scenes" not in script or not isinstance(script["scenes"], list):
-            script["scenes"] = [
-                {
-                    "brand": "सृजन की दास्तान",
-                    "subBrand": "BUILD IN PUBLIC",
-                    "tag": "भाग १: विचार और चुनौती",
-                    "heading": script.get("title", "विकास का नया अध्याय"),
-                    "points": ["नई आवश्यकताओं का विश्लेषण", "आर्किटेक्चरल चुनौतियों का समाधान"],
-                    "accent": "gold"
-                },
-                {
-                    "brand": "सृजन की दास्तान",
-                    "subBrand": "CODE & COMMIT",
-                    "tag": "भाग २: कोडिंग और समाधान",
-                    "heading": "गिट कमिट्स और डीप इंजीनियरिंग",
-                    "points": ["चैट संवाद से समाधान का निर्माण", "निरंतर कोड रिफैक्टरिंग और परीक्षण"],
-                    "accent": "cyan"
-                },
-                {
-                    "brand": "सृजन की दास्तान",
-                    "subBrand": "LIVE RESULTS",
-                    "tag": "भाग ३: सफलता और परिणाम",
-                    "heading": "लाइव डिप्लॉयमेंट और परिणाम",
-                    "points": ["क्लाउड व एज पर सफल एक्ज़ीक्यूशन", "anshuka.in पर लाइव प्लेटफॉर्म"],
-                    "accent": "emerald"
-                }
-            ]
-    else:
-        script = generate_script(api_key, req.customTopic, req.dict())
-
-    # 2. Emotive Audio Synthesis
-    audio_bytes = synthesize_audio(api_key, script["dialogue"], req.voicePersona or "Puck")
-    with open(audio_path, "wb") as f:
-        f.write(audio_bytes)
-
-    # Calculate exact duration
-    with wave.open(audio_path, "r") as wf:
-        total_duration = wf.getnframes() / float(wf.getframerate())
-
-    # 3. Procedural Multi-Scene Graphics + Animated Waveform & Equalizer
-    scenes = script.get("scenes", [])
-    num_scenes = max(1, len(scenes))
-    scene_duration = total_duration / num_scenes
-
-    scene_images = []
-    for idx, sc in enumerate(scenes):
-        sc_png = os.path.join(tmp_dir, f"{broadcast_id}_scene_{idx}.png")
-        create_scene_frame(sc, idx, num_scenes, script["title"], script.get("subtitle", ""), sc_png)
-        scene_images.append(sc_png)
-
-    # Write concat playlist for sequential visual scene transitions
-    concat_txt = os.path.join(tmp_dir, f"{broadcast_id}_concat.txt")
-    with open(concat_txt, "w") as f:
-        for idx, sc_img in enumerate(scene_images):
-            dur = scene_duration if idx < num_scenes - 1 else max(1.0, total_duration - (num_scenes - 1) * scene_duration)
-            f.write(f"file '{sc_img}'\n")
-            f.write(f"duration {dur:.3f}\n")
-        f.write(f"file '{scene_images[-1]}'\n")
-
-    # 2b. Studio Audio Mastering: Intro chime, scene transition whooshes, ambient pad & broadcast compression
-    scene_durs = [scene_duration if idx < num_scenes - 1 else max(1.0, total_duration - (num_scenes - 1) * scene_duration) for idx in range(num_scenes)]
     mastered_audio_path = os.path.join(tmp_dir, f"{broadcast_id}_mastered.wav")
-    final_audio_path = build_mastered_broadcast_audio(audio_path, total_duration, scene_durs, mastered_audio_path)
-
-    # Generate ASS subtitles for animated narration text (rendered inside dedicated Subtitle Dock)
+    concat_txt = os.path.join(tmp_dir, f"{broadcast_id}_concat.txt")
     ass_path = os.path.join(tmp_dir, f"{broadcast_id}.ass")
-    fonts_dir = os.path.join(os.path.dirname(__file__), "fonts")
-    if not os.path.exists(fonts_dir):
-        fonts_dir = "/usr/share/fonts/truetype/noto"
-    generate_ass_subtitles(script["dialogue"], total_duration, ass_path, "Noto Sans Devanagari")
+    mp4_path = os.path.join(tmp_dir, f"{broadcast_id}.mp4")
+    scene_images = []
 
-    ticker_font = os.path.join(fonts_dir, "NotoSansDevanagari-Bold.ttf")
-    if not os.path.exists(ticker_font):
-        ticker_font = "/usr/share/fonts/truetype/noto/NotoSansDevanagari-Bold.ttf"
-    if not os.path.exists(ticker_font):
-        ticker_font = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
+    try:
+        # 1. Multi-Scene Script Generation or Use Pre-Generated Script
+        if req.providedScript and isinstance(req.providedScript, dict) and "dialogue" in req.providedScript:
+            script = req.providedScript
+            # Ensure scenes exist
+            if "scenes" not in script or not isinstance(script["scenes"], list):
+                script["scenes"] = [
+                    {
+                        "brand": "सृजन की दास्तान",
+                        "subBrand": "BUILD IN PUBLIC",
+                        "tag": "भाग १: विचार और चुनौती",
+                        "heading": script.get("title", "विकास का नया अध्याय"),
+                        "points": ["नई आवश्यकताओं का विश्लेषण", "आर्किटेक्चरल चुनौतियों का समाधान"],
+                        "accent": "gold"
+                    },
+                    {
+                        "brand": "सृजन की दास्तान",
+                        "subBrand": "CODE & COMMIT",
+                        "tag": "भाग २: कोडिंग और समाधान",
+                        "heading": "गिट कमिट्स और डीप इंजीनियरिंग",
+                        "points": ["चैट संवाद से समाधान का निर्माण", "निरंतर कोड रिफैक्टरिंग और परीक्षण"],
+                        "accent": "cyan"
+                    },
+                    {
+                        "brand": "सृजन की दास्तान",
+                        "subBrand": "LIVE RESULTS",
+                        "tag": "भाग ३: सफलता और परिणाम",
+                        "heading": "लाइव डिप्लॉयमेंट और परिणाम",
+                        "points": ["क्लाउड व एज पर सफल एक्ज़ीक्यूशन", "anshuka.in पर लाइव प्लेटफॉर्म"],
+                        "accent": "emerald"
+                    }
+                ]
+        else:
+            script = generate_script(api_key, req.customTopic, req.dict())
 
-    filter_complex_str = (
-        f"[0:v]fps=25[bg];"
-        f"[1:a]showfreqs=s=530x100:mode=bar:ascale=log:fscale=log:colors=0x38bdf8|0x10b981|0xf59e0b[spec];"
-        f"[1:a]showwaves=s=530x100:mode=p2p:scale=sqrt:draw=full:colors=0x38bdf8|0x06b6d4:rate=25[waves];"
-        f"[bg][spec]overlay=105:550[v1];"
-        f"[v1][waves]overlay=665:550[v2];"
-        f"[v2]drawbox=x=80:y='70+mod(t*120, 340)':w=1120:h=2:color=0x38bdf8@0.4:t=fill[v3];"
-        f"[v3]drawbox=x=1170:y=85:w=14:h=14:color=0x10b981@0.8:t=2[v4];"
-        f"[v4]subtitles='{ass_path}':fontsdir='{fonts_dir}'[v5];"
-        f"[v5]drawtext=fontfile='{ticker_font}':text='● LIVE ON-AIR':fontsize=12:fontcolor=0xef4444:enable='lt(mod(t,1),0.65)':x={WIDTH_LANDSCAPE-220}:y=16[v6];"
-        f"[v6]drawtext=fontfile='{ticker_font}':text='⚡ AMAN TECH SOLUTIONS • REAL-TIME DEV CHRONICLES • 100% BUILDING IN PUBLIC • anshuka.in':fontsize=12:fontcolor=0x94a3b8:x='w-t*115':y={HEIGHT_LANDSCAPE-26}[outv]"
-    )
+        # 2. Emotive Audio Synthesis
+        audio_bytes = synthesize_audio(api_key, script["dialogue"], req.voicePersona or "Puck")
+        with open(audio_path, "wb") as f:
+            f.write(audio_bytes)
 
-    ffmpeg_cmd = [
-        "ffmpeg", "-y",
-        "-threads", "2",
-        "-f", "concat",
-        "-safe", "0",
-        "-i", concat_txt,
-        "-i", final_audio_path,
-        "-filter_complex", filter_complex_str,
-        "-map", "[outv]",
-        "-map", "1:a",
-        "-c:v", "libx264",
-        "-preset", "ultrafast",
-        "-c:a", "aac",
-        "-b:a", "128k",
-        "-pix_fmt", "yuv420p",
-        "-shortest",
-        mp4_path
-    ]
-    subprocess.run(ffmpeg_cmd, check=True)
+        # Calculate exact duration
+        with wave.open(audio_path, "r") as wf:
+            total_duration = wf.getnframes() / float(wf.getframerate())
 
-    public_video_url = f"https://anshuka-etherbroadcast.onrender.com/media/{broadcast_id}.mp4"
+        # 3. Procedural Multi-Scene Graphics + Animated Waveform & Equalizer
+        scenes = script.get("scenes", [])
+        num_scenes = max(1, len(scenes))
+        scene_duration = total_duration / num_scenes
 
-    # 4. Multi-Platform Autonomous Dispatch
-    publish_results = []
-    target_platforms = req.platforms or ["youtube"]
+        for idx, sc in enumerate(scenes):
+            sc_png = os.path.join(tmp_dir, f"{broadcast_id}_scene_{idx}.png")
+            create_scene_frame(sc, idx, num_scenes, script["title"], script.get("subtitle", ""), sc_png)
+            scene_images.append(sc_png)
 
-    # 4a. YouTube
-    if "youtube" in target_platforms:
-        yt_token = get_youtube_token()
-        if yt_token:
-            try:
-                yt_res = upload_youtube_video(
-                    yt_token,
-                    mp4_path,
-                    script["title"],
-                    f"{script['dialogue']}\n\n{script.get('socialCaption', '')}\n\nआधिकारिक मंच: https://anshuka.in\nअमन टेक सॉल्यूशंस (ATS Platform) | निर्माण की जीवंत दास्तान",
-                    script.get("tags", []),
-                    req.privacyStatus or "unlisted"
-                )
+        # Write concat playlist for sequential visual scene transitions
+        with open(concat_txt, "w") as f:
+            for idx, sc_img in enumerate(scene_images):
+                dur = scene_duration if idx < num_scenes - 1 else max(1.0, total_duration - (num_scenes - 1) * scene_duration)
+                f.write(f"file '{sc_img}'\n")
+                f.write(f"duration {dur:.3f}\n")
+            f.write(f"file '{scene_images[-1]}'\n")
+
+        # 2b. Studio Audio Mastering: Intro chime, scene transition whooshes, ambient pad & broadcast compression
+        scene_durs = [scene_duration if idx < num_scenes - 1 else max(1.0, total_duration - (num_scenes - 1) * scene_duration) for idx in range(num_scenes)]
+        final_audio_path = build_mastered_broadcast_audio(audio_path, total_duration, scene_durs, mastered_audio_path)
+
+        # Generate ASS subtitles for animated narration text (rendered inside dedicated Subtitle Dock)
+        fonts_dir = os.path.join(os.path.dirname(__file__), "fonts")
+        if not os.path.exists(fonts_dir):
+            fonts_dir = "/usr/share/fonts/truetype/noto"
+        generate_ass_subtitles(script["dialogue"], total_duration, ass_path, "Noto Sans Devanagari")
+
+        ticker_font = os.path.join(fonts_dir, "NotoSansDevanagari-Bold.ttf")
+        if not os.path.exists(ticker_font):
+            ticker_font = "/usr/share/fonts/truetype/noto/NotoSansDevanagari-Bold.ttf"
+        if not os.path.exists(ticker_font):
+            ticker_font = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
+
+        filter_complex_str = (
+            f"[0:v]fps=25[bg];"
+            f"[1:a]showfreqs=s=530x100:mode=bar:ascale=log:fscale=log:colors=0x38bdf8|0x10b981|0xf59e0b[spec];"
+            f"[1:a]showwaves=s=530x100:mode=p2p:scale=sqrt:draw=full:colors=0x38bdf8|0x06b6d4:rate=25[waves];"
+            f"[bg][spec]overlay=105:550[v1];"
+            f"[v1][waves]overlay=665:550[v2];"
+            f"[v2]drawbox=x=80:y='70+mod(t*120, 340)':w=1120:h=2:color=0x38bdf8@0.4:t=fill[v3];"
+            f"[v3]drawbox=x=1170:y=85:w=14:h=14:color=0x10b981@0.8:t=2[v4];"
+            f"[v4]subtitles='{ass_path}':fontsdir='{fonts_dir}'[v5];"
+            f"[v5]drawtext=fontfile='{ticker_font}':text='● LIVE ON-AIR':fontsize=12:fontcolor=0xef4444:enable='lt(mod(t,1),0.65)':x={WIDTH_LANDSCAPE-220}:y=16[v6];"
+            f"[v6]drawtext=fontfile='{ticker_font}':text='⚡ AMAN TECH SOLUTIONS • REAL-TIME DEV CHRONICLES • 100% BUILDING IN PUBLIC • anshuka.in':fontsize=12:fontcolor=0x94a3b8:x='w-t*115':y={HEIGHT_LANDSCAPE-26}[outv]"
+        )
+
+        # Memory-Hardened FFmpeg Execution within 512MB RAM constraints:
+        # -threads 1 (prevents multi-thread lookahead buffer multiplication in libx264)
+        # -x264-params sync-lookahead=0:rc-lookahead=10:b-adapt=0 (clamps frame lookahead from 300MB to ~30MB)
+        # -max_muxing_queue_size 128 (bounds unencoded audio/video buffers)
+        ffmpeg_cmd = [
+            "ffmpeg", "-y",
+            "-threads", "1",
+            "-f", "concat",
+            "-safe", "0",
+            "-i", concat_txt,
+            "-i", final_audio_path,
+            "-filter_complex", filter_complex_str,
+            "-map", "[outv]",
+            "-map", "1:a",
+            "-c:v", "libx264",
+            "-preset", "veryfast",
+            "-tune", "stillimage",
+            "-x264-params", "sync-lookahead=0:rc-lookahead=10:b-adapt=0",
+            "-c:a", "aac",
+            "-b:a", "128k",
+            "-max_muxing_queue_size", "128",
+            "-pix_fmt", "yuv420p",
+            "-shortest",
+            mp4_path
+        ]
+        subprocess.run(ffmpeg_cmd, check=True)
+
+        public_video_url = f"https://anshuka-etherbroadcast.onrender.com/media/{broadcast_id}.mp4"
+
+        # 4. Multi-Platform Autonomous Dispatch
+        publish_results = []
+        target_platforms = req.platforms or ["youtube"]
+
+        # 4a. YouTube
+        if "youtube" in target_platforms:
+            yt_token = get_youtube_token()
+            if yt_token:
+                try:
+                    yt_res = upload_youtube_video(
+                        yt_token,
+                        mp4_path,
+                        script["title"],
+                        f"{script['dialogue']}\n\n{script.get('socialCaption', '')}\n\nआधिकारिक मंच: https://anshuka.in\nअमन टेक सॉल्यूशंस (ATS Platform) | निर्माण की जीवंत दास्तान",
+                        script.get("tags", []),
+                        req.privacyStatus or "unlisted"
+                    )
+                    publish_results.append({
+                        "platform": "youtube",
+                        "success": True,
+                        "targetId": yt_res["videoId"],
+                        "url": yt_res["url"]
+                    })
+                except Exception as e:
+                    publish_results.append({
+                        "platform": "youtube",
+                        "success": False,
+                        "error": str(e)
+                    })
+            else:
                 publish_results.append({
                     "platform": "youtube",
-                    "success": True,
-                    "targetId": yt_res["videoId"],
-                    "url": yt_res["url"]
-                })
-            except Exception as e:
-                publish_results.append({
-                    "platform": "youtube",
                     "success": False,
-                    "error": str(e)
+                    "error": "No YouTube token configured in cloud environment"
                 })
-        else:
-            publish_results.append({
-                "platform": "youtube",
-                "success": False,
-                "error": "No YouTube token configured in cloud environment"
-            })
 
-    # 4b. Facebook Page Video
-    if "facebook" in target_platforms:
-        page_token = os.environ.get("META_PAGE_ACCESS_TOKEN")
-        page_id = os.environ.get("FACEBOOK_PAGE_ID", "984918738043473")
-        if page_token and page_id:
-            try:
-                fb_desc = f"{script['title']}\n\n{script['dialogue']}\n\n{script.get('socialCaption', '')}\n\nमंच: https://anshuka.in | अमन टेक सॉल्यूशंस (निर्माण की जीवंत दास्तान)"
-                fb_res = publish_facebook_video(page_token, page_id, mp4_path, script["title"], fb_desc)
-                publish_results.append({
-                    "platform": "facebook",
-                    "success": fb_res.get("success", False),
-                    "targetId": fb_res.get("targetId"),
-                    "url": fb_res.get("url"),
-                    "error": fb_res.get("error")
-                })
-            except Exception as e:
+        # 4b. Facebook Page Video
+        if "facebook" in target_platforms:
+            page_token = os.environ.get("META_PAGE_ACCESS_TOKEN")
+            page_id = os.environ.get("FACEBOOK_PAGE_ID", "984918738043473")
+            if page_token and page_id:
+                try:
+                    fb_desc = f"{script['title']}\n\n{script['dialogue']}\n\n{script.get('socialCaption', '')}\n\nमंच: https://anshuka.in | अमन टेक सॉल्यूशंस (निर्माण की जीवंत दास्तान)"
+                    fb_res = publish_facebook_video(page_token, page_id, mp4_path, script["title"], fb_desc)
+                    publish_results.append({
+                        "platform": "facebook",
+                        "success": fb_res.get("success", False),
+                        "targetId": fb_res.get("targetId"),
+                        "url": fb_res.get("url"),
+                        "error": fb_res.get("error")
+                    })
+                except Exception as e:
+                    publish_results.append({
+                        "platform": "facebook",
+                        "success": False,
+                        "error": str(e)
+                    })
+            else:
                 publish_results.append({
                     "platform": "facebook",
                     "success": False,
-                    "error": str(e)
+                    "error": "META_PAGE_ACCESS_TOKEN or FACEBOOK_PAGE_ID not configured"
                 })
-        else:
-            publish_results.append({
-                "platform": "facebook",
-                "success": False,
-                "error": "META_PAGE_ACCESS_TOKEN or FACEBOOK_PAGE_ID not configured"
-            })
 
-    # 4c. Instagram Reel
-    if "instagram" in target_platforms:
-        page_token = os.environ.get("META_PAGE_ACCESS_TOKEN")
-        ig_user_id = os.environ.get("INSTAGRAM_ACCOUNT_ID", "17841446842624563")
-        if page_token and ig_user_id:
-            try:
-                ig_caption = f"{script['title']}\n\n{script.get('socialCaption', '')}\n\nनिर्माण की जीवंत दास्तान — अमन टेक सॉल्यूशंस • anshuka.in"
-                ig_res = publish_instagram_reel(page_token, ig_user_id, public_video_url, ig_caption)
-                publish_results.append({
-                    "platform": "instagram",
-                    "success": ig_res.get("success", False),
-                    "targetId": ig_res.get("targetId"),
-                    "url": ig_res.get("url"),
-                    "error": ig_res.get("error")
-                })
-            except Exception as e:
+        # 4c. Instagram Reel
+        if "instagram" in target_platforms:
+            page_token = os.environ.get("META_PAGE_ACCESS_TOKEN")
+            ig_user_id = os.environ.get("INSTAGRAM_ACCOUNT_ID", "17841446842624563")
+            if page_token and ig_user_id:
+                try:
+                    ig_caption = f"{script['title']}\n\n{script.get('socialCaption', '')}\n\nनिर्माण की जीवंत दास्तान — अमन टेक सॉल्यूशंस • anshuka.in"
+                    ig_res = publish_instagram_reel(page_token, ig_user_id, public_video_url, ig_caption)
+                    publish_results.append({
+                        "platform": "instagram",
+                        "success": ig_res.get("success", False),
+                        "targetId": ig_res.get("targetId"),
+                        "url": ig_res.get("url"),
+                        "error": ig_res.get("error")
+                    })
+                except Exception as e:
+                    publish_results.append({
+                        "platform": "instagram",
+                        "success": False,
+                        "error": str(e)
+                    })
+            else:
                 publish_results.append({
                     "platform": "instagram",
                     "success": False,
-                    "error": str(e)
+                    "error": "META_PAGE_ACCESS_TOKEN or INSTAGRAM_ACCOUNT_ID not configured"
                 })
-        else:
-            publish_results.append({
-                "platform": "instagram",
-                "success": False,
-                "error": "META_PAGE_ACCESS_TOKEN or INSTAGRAM_ACCOUNT_ID not configured"
-            })
 
-    record = {
-        "id": broadcast_id,
-        "script": script,
-        "storyType": req.storyType or "dev_journey",
-        "scenesCount": len(scenes),
-        "videoPath": mp4_path,
-        "videoPublicUrl": public_video_url,
-        "publishResults": publish_results,
-        "status": "PUBLISHED" if any(r.get("success") for r in publish_results) else "FAILED",
-        "createdAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
-    }
+        record = {
+            "id": broadcast_id,
+            "script": script,
+            "storyType": req.storyType or "dev_journey",
+            "scenesCount": len(scenes),
+            "videoPath": mp4_path,
+            "videoPublicUrl": public_video_url,
+            "publishResults": publish_results,
+            "status": "PUBLISHED" if any(r.get("success") for r in publish_results) else "FAILED",
+            "createdAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+        }
 
-    RECORDS_CACHE.insert(0, record)
-    if len(RECORDS_CACHE) > 50:
-        RECORDS_CACHE.pop()
+        RECORDS_CACHE.insert(0, record)
+        if len(RECORDS_CACHE) > 50:
+            RECORDS_CACHE.pop()
 
-    return {"success": True, "record": record}
+        return {"success": True, "record": record}
+    finally:
+        # 🧹 Memory Protection: Immediately purge intermediate WAVs, PNGs, ASS & playlist from RAM disk
+        intermediate_artifacts = [
+            audio_path,
+            mastered_audio_path,
+            concat_txt,
+            ass_path,
+            *scene_images
+        ]
+        for fpath in intermediate_artifacts:
+            try:
+                if fpath and os.path.exists(fpath):
+                    os.remove(fpath)
+            except Exception:
+                pass
+
+        # Prune old mp4 files in /tmp so only the 2 most recent videos remain
+        try:
+            mp4_files = sorted(
+                [os.path.join(tmp_dir, f) for f in os.listdir(tmp_dir) if f.endswith(".mp4")],
+                key=os.path.getmtime,
+                reverse=True
+            )
+            for old_mp4 in mp4_files[2:]:
+                try:
+                    os.remove(old_mp4)
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+        gc.collect()
+        try:
+            PIPELINE_LOCK.release()
+        except RuntimeError:
+            pass
 
 @app.post("/api/etherbroadcast/trigger")
 def trigger_broadcast(req: TriggerRequest):
