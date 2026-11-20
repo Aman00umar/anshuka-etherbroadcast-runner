@@ -1070,24 +1070,35 @@ async def gemini_live_voice_agent_ws(websocket: WebSocket):
 
             async def downstream():
                 try:
-                    async for response in session.receive():
-                        if response.server_content:
-                            sc = response.server_content
-                            if sc.interrupted:
-                                await websocket.send_text(json.dumps({"type": "interrupted"}))
-                            if sc.model_turn:
-                                for part in sc.model_turn.parts:
-                                    if part.inline_data and part.inline_data.data:
-                                        raw_d = part.inline_data.data
-                                        if isinstance(raw_d, bytes):
-                                            b64_audio = base64.b64encode(raw_d).decode("utf-8")
-                                        else:
-                                            b64_audio = str(raw_d)
-                                        await websocket.send_text(json.dumps({"type": "audio", "audio": b64_audio}))
-                                    if part.text:
-                                        await websocket.send_text(json.dumps({"type": "output_transcript", "text": part.text}))
-                            if sc.turn_complete:
-                                await websocket.send_text(json.dumps({"type": "turnComplete"}))
+                    while True:
+                        try:
+                            async for response in session.receive():
+                                if response.server_content:
+                                    sc = response.server_content
+                                    if sc.interrupted:
+                                        print("[GeminiLive Cloud Runner] User interrupted assistant speech (barge-in)")
+                                        await websocket.send_text(json.dumps({"type": "interrupted"}))
+                                    if sc.model_turn:
+                                        for part in sc.model_turn.parts:
+                                            if part.inline_data and part.inline_data.data:
+                                                raw_d = part.inline_data.data
+                                                if isinstance(raw_d, bytes):
+                                                    b64_audio = base64.b64encode(raw_d).decode("utf-8")
+                                                else:
+                                                    b64_audio = str(raw_d)
+                                                await websocket.send_text(json.dumps({"type": "audio", "audio": b64_audio}))
+                                            if part.text:
+                                                await websocket.send_text(json.dumps({"type": "output_transcript", "text": part.text}))
+                                    if sc.turn_complete:
+                                        print("[GeminiLive Cloud Runner] Model turn completed, awaiting next input")
+                                        await websocket.send_text(json.dumps({"type": "turnComplete"}))
+                        except asyncio.CancelledError:
+                            break
+                        except Exception as rec_err:
+                            print(f"[GeminiLive Receive Loop Warning]: {rec_err}")
+                            await asyncio.sleep(0.05)
+                except asyncio.CancelledError:
+                    pass
                 except Exception as down_err:
                     print(f"[GeminiLive Downstream Error]: {down_err}")
 
@@ -1100,17 +1111,25 @@ async def gemini_live_voice_agent_ws(websocket: WebSocket):
                         if m_type == "audio":
                             b64_audio = msg.get("audio")
                             if b64_audio:
-                                pcm_bytes = base64.b64decode(b64_audio)
-                                await session.send_realtime_input(
-                                    audio=types.Blob(data=pcm_bytes, mime_type="audio/pcm;rate=16000")
-                                )
+                                try:
+                                    pcm_bytes = base64.b64decode(b64_audio)
+                                    await session.send_realtime_input(
+                                        audio=types.Blob(data=pcm_bytes, mime_type="audio/pcm;rate=16000")
+                                    )
+                                except Exception as aud_err:
+                                    print(f"[GeminiLive Audio Send Warning]: {aud_err}")
                         elif m_type == "text":
                             txt = msg.get("text", "")
                             if txt:
-                                await session.send_client_content(
-                                    turns=[types.Content(role="user", parts=[types.Part(text=txt)])],
-                                    turn_complete=True
-                                )
+                                try:
+                                    await session.send_client_content(
+                                        turns=[types.Content(role="user", parts=[types.Part(text=txt)])],
+                                        turn_complete=True
+                                    )
+                                except Exception as txt_err:
+                                    print(f"[GeminiLive Text Send Warning]: {txt_err}")
+                except (WebSocketDisconnect, asyncio.CancelledError):
+                    print("[GeminiLive Upstream] Client disconnected.")
                 except Exception as up_err:
                     print(f"[GeminiLive Upstream Error]: {up_err}")
 
