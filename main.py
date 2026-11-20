@@ -1017,7 +1017,7 @@ async def gemini_live_voice_agent_ws(websocket: WebSocket):
         await websocket.close(code=1011, reason="GEMINI_API_KEY not configured on server")
         return
 
-    client = genai.Client(api_key=api_key)
+    client = genai.Client(api_key=api_key.strip(), http_options={"api_version": "v1alpha"})
     voice_name = "Aoede"
     system_instruction = (
         "You are Rahu Autonomous Voice Core (राहु ऑटोनॉमस वॉयस कोर), the sovereign, loyal personal AI assistant for Master Aman Kumar.\n"
