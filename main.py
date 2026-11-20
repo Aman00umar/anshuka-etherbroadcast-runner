@@ -22,7 +22,9 @@ import subprocess
 import requests
 import asyncio
 from datetime import datetime, timezone
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from google import genai
+from google.genai import types
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from typing import List, Optional, Dict, Any
@@ -1004,6 +1006,127 @@ async def autonomous_scheduler_loop():
                 execute_broadcast_pipeline(req)
         except Exception as e:
             print(f"[Autonomous Dev Scheduler Error]: {e}")
+
+@app.websocket("/api/live-agent")
+@app.websocket("/api/mobile/voice/session")
+async def gemini_live_voice_agent_ws(websocket: WebSocket):
+    await websocket.accept()
+    api_key = os.environ.get("GEMINI_API_KEY")
+    if not api_key:
+        print("[GeminiLive Cloud Runner] Error: GEMINI_API_KEY not configured")
+        await websocket.close(code=1011, reason="GEMINI_API_KEY not configured on server")
+        return
+
+    client = genai.Client(api_key=api_key)
+    voice_name = "Aoede"
+    system_instruction = (
+        "You are Rahu Autonomous Voice Core (राहु ऑटोनॉमस वॉयस कोर), the sovereign, loyal personal AI assistant for Master Aman Kumar.\n"
+        "Core Directives:\n"
+        "- Always address Master Aman Kumar with high esteem and warmth as 'अमन जी'.\n"
+        "- Speak fluently in conversational, expressive Hindi with natural tone, crisp articulation, and confident poise.\n"
+        "- Respond in short, concise, spoken conversational turns (1-3 sentences) suitable for hands-free audio.\n"
+        "- You have full autonomy to assist Master Aman Kumar with development updates, autonomous agent statuses, schedules, and sovereign decisions.\n"
+        "- Never act like a generic robotic chatbot or customer service desk. You are a high-level executive partner."
+    )
+
+    try:
+        # Wait for optional initial configuration frame with 3s timeout
+        try:
+            init_data = await asyncio.wait_for(websocket.receive_text(), timeout=3.0)
+            init_json = json.loads(init_data)
+            if init_json.get("type") == "init":
+                voice_name = init_json.get("voiceName") or voice_name
+        except (asyncio.TimeoutError, json.JSONDecodeError):
+            pass
+        except Exception as e:
+            print(f"[GeminiLive Cloud Runner] Init frame warning: {e}")
+
+        config = {
+            "response_modalities": ["AUDIO"],
+            "speech_config": {
+                "voice_config": {
+                    "prebuilt_voice_config": {
+                        "voice_name": voice_name
+                    }
+                }
+            },
+            "system_instruction": system_instruction
+        }
+
+        async with client.aio.live.connect(model="gemini-3.8-live", config=config) as session:
+            print(f"[GeminiLive Cloud Runner] Live session established with voice {voice_name}")
+
+            # Send immediate spoken greeting prompt so Gemini Live speaks aloud on connection
+            greeting_prompt = (
+                "[SYSTEM DIRECTIVE: SPOKEN OWNER BRIEFING] Master Aman Kumar has connected from his mobile device. "
+                "Speak immediately aloud in Hindi with commanding warmth and crisp audio (1-2 short sentences): "
+                "'नमस्ते अमन जी! राहु ऑटोनॉमस वॉयस कोर रेंडर क्लाउड पर 24/7 सक्रिय है। आज के लिए क्या निर्देश हैं?'"
+            )
+            await session.send_client_content(
+                turns=[types.Content(role="user", parts=[types.Part(text=greeting_prompt)])],
+                turn_complete=True
+            )
+
+            async def downstream():
+                try:
+                    async for response in session.receive():
+                        if response.server_content:
+                            sc = response.server_content
+                            if sc.interrupted:
+                                await websocket.send_json({"type": "interrupted"})
+                            if sc.model_turn:
+                                for part in sc.model_turn.parts:
+                                    if part.inline_data and part.inline_data.data:
+                                        b64_audio = base64.b64encode(part.inline_data.data).decode("utf-8")
+                                        await websocket.send_json({"type": "audio", "audio": b64_audio})
+                                    if part.text:
+                                        await websocket.send_json({"type": "output_transcript", "text": part.text})
+                            if sc.turn_complete:
+                                await websocket.send_json({"type": "turnComplete"})
+                except Exception as down_err:
+                    print(f"[GeminiLive Downstream Error]: {down_err}")
+
+            async def upstream():
+                try:
+                    while True:
+                        raw = await websocket.receive_text()
+                        msg = json.loads(raw)
+                        m_type = msg.get("type")
+                        if m_type == "audio":
+                            b64_audio = msg.get("audio")
+                            if b64_audio:
+                                pcm_bytes = base64.b64decode(b64_audio)
+                                await session.send_realtime_input(
+                                    audio=types.Blob(data=pcm_bytes, mime_type="audio/pcm;rate=16000")
+                                )
+                        elif m_type == "text":
+                            txt = msg.get("text", "")
+                            if txt:
+                                await session.send_client_content(
+                                    turns=[types.Content(role="user", parts=[types.Part(text=txt)])],
+                                    turn_complete=True
+                                )
+                except Exception as up_err:
+                    print(f"[GeminiLive Upstream Error]: {up_err}")
+
+            down_task = asyncio.create_task(downstream())
+            up_task = asyncio.create_task(upstream())
+
+            done, pending = await asyncio.wait(
+                [down_task, up_task],
+                return_when=asyncio.FIRST_COMPLETED
+            )
+            for task in pending:
+                task.cancel()
+
+    except (WebSocketDisconnect, asyncio.CancelledError):
+        print("[GeminiLive Cloud Runner] WebSocket client disconnected cleanly.")
+    except Exception as e:
+        print(f"[GeminiLive Cloud Runner Error]: {e}")
+        try:
+            await websocket.close(code=1011, reason=str(e))
+        except Exception:
+            pass
 
 @app.on_event("startup")
 async def startup_event():
